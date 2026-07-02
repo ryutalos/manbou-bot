@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>くゆらす LP Design</title>
+<style>
+  :root{
+    --ink:#17292d;
+    --smoke:#71808a;
+    --mist:#edf1f1;
+    --paper:#f7f3ec;
+    --white:#fff;
+    --blue:#006b9d;
+    --deep:#062f3a;
+    --flame:#ff6a1a;
+    --ember:#e8481d;
+    --line:rgba(23,41,45,.18);
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;
+    color:var(--ink);
+    background:#e7ecec;
+    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic",Meiryo,sans-serif;
+  }
+  .toolbar{
+    position:fixed; z-index:20; top:14px; left:50%; transform:translateX(-50%);
+    display:flex; gap:8px; padding:6px; border:1px solid rgba(255,255,255,.5);
+    background:rgba(10,27,31,.48); backdrop-filter:blur(12px); border-radius:999px;
+  }
+  .toolbar button{
+    border:0; padding:9px 15px; border-radius:999px; background:transparent;
+    color:white; cursor:pointer; font-weight:700; letter-spacing:.02em;
+  }
+  .toolbar button.active{background:white;color:var(--deep)}
+  .stage{padding:72px 18px 40px; min-height:100vh}
+  .viewport{
+    width:min(1240px,100%); margin:auto; background:var(--paper);
+    box-shadow:0 24px 70px rgba(5,31,37,.28); overflow:hidden;
+    transition:width .35s ease, border-radius .35s ease;
+  }
+  .viewport.phone{width:390px; border-radius:34px; border:10px solid #111; max-width:100%}
+  .site{position:relative; overflow:hidden; background:var(--paper)}
+  .site:before{
+    content:""; position:absolute; inset:0; pointer-events:none; opacity:.32; mix-blend-mode:multiply;
+    background-image:url("data:image/svg+xml,%3Csvg width='160' height='160' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='.18'/%3E%3C/svg%3E");
+  }
+  section{position:relative; padding:96px clamp(24px,6vw,84px)}
+  .hero{
+    min-height:780px; color:white; display:grid; align-content:space-between;
+    padding:42px clamp(28px,6vw,76px) 54px;
+    background:
+      radial-gradient(circle at 47% 78%, rgba(255,106,26,.95) 0 3%, rgba(255,106,26,.35) 7%, transparent 18%),
+      radial-gradient(circle at 45% 81%, rgba(255,255,255,.88) 0 1.2%, rgba(255,190,80,.7) 4%, transparent 12%),
+      linear-gradient(to top, rgba(4,31,37,.96), rgba(4,31,37,.58) 45%, rgba(195,201,210,.58) 100%),
+      radial-gradient(ellipse at 52% 48%, #103f4d 0 22%, transparent 23%),
+      linear-gradient(180deg,#8b98a2 0%,#d7c8c9 33%,#163d49 34%,#052b36 100%);
+  }
+  .hero:after{
+    content:""; position:absolute; left:0; right:0; bottom:0; height:45%;
+    background:
+      linear-gradient(12deg, transparent 0 40%, rgba(255,255,255,.18) 41% 42%, transparent 43%),
+      radial-gradient(ellipse at 50% 8%, rgba(230,241,243,.45), transparent 46%),
+      linear-gradient(to top, rgba(2,21,26,.9), transparent);
+    clip-path:polygon(0 30%,12% 24%,24% 32%,39% 18%,55% 29%,70% 20%,84% 34%,100% 25%,100% 100%,0 100%);
+    opacity:.9;
+  }
+  .nav{position:relative; z-index:2; display:flex; justify-content:space-between; align-items:flex-start}
+  .brand-mark{line-height:.9}
+  .brand-mark .en{
+    display:block; font-size:clamp(44px,8vw,98px); font-weight:950; letter-spacing:.015em;
+    color:white; text-shadow:0 3px 0 rgba(255,255,255,.18);
+    font-family:"Arial Rounded MT Bold","Hiragino Maru Gothic ProN",system-ui,sans-serif;
+  }
+  .brand-mark .ja{display:block; margin-top:12px; font-size:22px; letter-spacing:.12em}
+  .squiggle{width:280px; max-width:42vw; margin-bottom:18px}
+  .mineral{
+    width:70px; height:58px; border-radius:52% 42% 58% 35%;
+    background:radial-gradient(circle at 66% 24%,#f7f7ff 0 15%,transparent 16%),
+      linear-gradient(135deg,#f4f4ff,#9fafe9 32%,#6b56bd 60%,#e8e6ff);
+    transform:rotate(-12deg); filter:drop-shadow(0 8px 14px rgba(0,0,0,.22));
+  }
+  .hero-copy{position:relative; z-index:2; max-width:760px; margin-top:120px}
+  .hero h1{
+    margin:0 0 24px; font-size:clamp(47px,8vw,92px); line-height:1.18;
+    letter-spacing:.1em; font-weight:950;
+  }
+  .hero p{max-width:560px; font-size:18px; line-height:2; color:rgba(255,255,255,.88)}
+  .hero-bottom{position:relative; z-index:2; display:flex; justify-content:space-between; align-items:end; gap:28px}
+  .cta{
+    display:inline-flex; align-items:center; justify-content:center; min-width:220px;
+    min-height:62px; border:1.5px solid white; border-radius:999px; color:white;
+    text-decoration:none; font-size:18px; letter-spacing:.08em; background:rgba(255,255,255,.05);
+  }
+  .lead{
+    display:grid; grid-template-columns:1fr 1.2fr; gap:56px; align-items:center;
+    background:linear-gradient(180deg,#f7f3ec,#eef3f2);
+  }
+  .section-label{font-size:14px; font-weight:900; color:var(--blue); letter-spacing:.16em}
+  h2{font-size:clamp(34px,5vw,64px); line-height:1.18; letter-spacing:.05em; margin:14px 0 26px}
+  p{font-size:16px; line-height:2; margin:0}
+  .lead-card{
+    padding:38px; background:white; border-radius:28px 18px 34px 20px;
+    box-shadow:12px 14px 0 rgba(0,107,157,.12);
+    transform:rotate(-1.2deg);
+  }
+  .lead-card p{font-size:20px}
+  .services{background:#fff}
+  .service-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:22px; margin-top:42px}
+  .service{
+    min-height:260px; padding:30px; background:var(--paper); border:1px solid var(--line);
+    border-radius:26px 18px 32px 16px; position:relative; overflow:hidden;
+  }
+  .service:nth-child(2){transform:translateY(28px); background:#eef5f7}
+  .service:nth-child(3){background:#f9f4ed}
+  .service h3{font-size:25px; margin:18px 0 16px; letter-spacing:.04em}
+  .num{font-size:13px; color:var(--blue); font-weight:900}
+  .doodle{
+    width:96px; height:56px; border:3px solid var(--ink); border-radius:52% 44% 58% 42%;
+    opacity:.72; transform:rotate(-8deg);
+  }
+  .for{
+    color:white;
+    background:
+      linear-gradient(rgba(3,39,48,.88),rgba(3,39,48,.94)),
+      radial-gradient(circle at 78% 24%,rgba(0,107,157,.85),transparent 28%),
+      linear-gradient(160deg,#083945,#0b2630);
+  }
+  .for ul{list-style:none; padding:0; margin:42px 0 0; display:grid; gap:18px}
+  .for li{
+    font-size:22px; line-height:1.7; padding:18px 0 18px 54px; position:relative;
+    border-bottom:1px solid rgba(255,255,255,.18);
+  }
+  .for li:before{
+    content:""; position:absolute; left:0; top:27px; width:28px; height:18px; border-radius:50%;
+    background:white; transform:rotate(-17deg);
+  }
+  .plan{background:#eef3f2; display:grid; grid-template-columns:1fr 1fr; gap:48px; align-items:center}
+  .price{
+    background:white; padding:44px; border-radius:44px 20px 50px 18px; border:1px solid var(--line);
+    box-shadow:-14px 14px 0 rgba(255,106,26,.18);
+  }
+  .price strong{display:block; font-size:clamp(50px,7vw,82px); color:var(--blue); line-height:1}
+  .price small{font-size:22px}
+  .included{display:flex; flex-wrap:wrap; gap:10px; margin:26px 0}
+  .included span{padding:10px 14px; border:1px solid var(--line); border-radius:999px; background:var(--paper)}
+  .flow{background:var(--paper)}
+  .steps{display:grid; grid-template-columns:repeat(5,1fr); gap:14px; margin-top:42px}
+  .step{
+    padding:24px 18px; background:white; border-radius:22px 16px 26px 14px;
+    min-height:150px; border:1px solid var(--line); position:relative;
+  }
+  .step b{display:block; color:var(--blue); margin-bottom:20px}
+  .step span{font-size:19px; font-weight:800; line-height:1.5}
+  .about{
+    color:white;
+    background:
+      linear-gradient(to bottom,rgba(5,39,47,.48),rgba(5,39,47,.9)),
+      radial-gradient(ellipse at 50% 18%,rgba(236,240,242,.72),transparent 38%),
+      linear-gradient(180deg,#a8b0b8 0%,#d8c8c9 35%,#123945 36%,#082c36 100%);
+  }
+  .about-inner{max-width:760px}
+  .about p{font-size:20px}
+  .contact{background:#fff; display:grid; grid-template-columns:.9fr 1.1fr; gap:48px; align-items:start}
+  form{
+    background:var(--paper); padding:30px; border-radius:28px 18px 34px 18px;
+    border:1px solid var(--line);
+  }
+  label{display:block; font-size:13px; font-weight:900; margin:18px 0 8px; letter-spacing:.08em}
+  input,textarea{
+    width:100%; border:1px solid rgba(23,41,45,.24); background:white; border-radius:14px;
+    padding:16px; font:inherit;
+  }
+  textarea{min-height:140px; resize:vertical}
+  .submit{
+    margin-top:20px; width:100%; border:0; border-radius:999px; padding:18px;
+    background:var(--ink); color:white; font-size:17px; font-weight:900; letter-spacing:.08em;
+  }
+  footer{padding:34px clamp(24px,6vw,84px); background:var(--ink); color:white; display:flex; justify-content:space-between}
+  .smoke-line{position:absolute; inset:auto 0 20px auto; width:44%; opacity:.75}
+  .phone .toolbar-note{display:none}
+
+  .viewport.phone .site section{padding:68px 24px}
+  .viewport.phone .hero{min-height:720px; padding:30px 24px 38px}
+  .viewport.phone .brand-mark .en{font-size:48px}
+  .viewport.phone .brand-mark .ja{font-size:16px}
+  .viewport.phone .mineral{width:46px;height:40px}
+  .viewport.phone .hero-copy{margin-top:88px}
+  .viewport.phone .hero h1{font-size:47px; letter-spacing:.07em}
+  .viewport.phone .hero p{font-size:15px}
+  .viewport.phone .hero-bottom{display:block}
+  .viewport.phone .cta{width:100%; margin-top:28px}
+  .viewport.phone .lead,
+  .viewport.phone .plan,
+  .viewport.phone .contact{grid-template-columns:1fr; gap:30px}
+  .viewport.phone .service-grid,
+  .viewport.phone .steps{grid-template-columns:1fr}
+  .viewport.phone .service:nth-child(2){transform:none}
+  .viewport.phone .for li{font-size:18px; padding-left:38px}
+  .viewport.phone footer{display:block}
+  @media(max-width:760px){
+    .toolbar{top:auto; bottom:14px}
+    .stage{padding:0}
+    .viewport{width:100%; box-shadow:none}
+    .lead,.plan,.contact{grid-template-columns:1fr}
+    .service-grid,.steps{grid-template-columns:1fr}
+    .service:nth-child(2){transform:none}
+    footer{display:block}
+  }
+</style>
+</head>
+<body>
+  <div class="toolbar" aria-label="preview switch">
+    <button class="active" data-view="desktop">Desktop</button>
+    <button data-view="phone">Smartphone</button>
+  </div>
+
+  <main class="stage">
+    <div class="viewport" id="viewport">
+      <div class="site">
+        <section class="hero">
+          <div class="nav">
+            <div class="brand-mark">
+              <svg class="squiggle" viewBox="0 0 320 50" fill="none" aria-hidden="true">
+                <path d="M8 28C29 7 45 49 66 25C83 5 98 48 119 24C137 4 151 48 173 25C192 5 207 49 229 24C248 4 263 48 285 25C297 13 307 17 315 22" stroke="white" stroke-width="10" stroke-linecap="round"/>
+              </svg>
+              <span class="en">KUYURASU</span>
+              <span class="ja">くゆらす</span>
+            </div>
+            <div class="mineral" aria-hidden="true"></div>
+          </div>
+
+          <div class="hero-copy">
+            <h1>くらしを支える<br>人たちの<br>想いを届ける<br>デザイン</h1>
+            <p>職人さん、個人店や作家さんに寄り添い、言葉と見え方を1ページのホームページに整える制作室です。</p>
+          </div>
+
+          <div class="hero-bottom">
+            <p>その人がすでに持っている火を、ちゃんと見える煙として立ち上らせます。</p>
+            <a class="cta" href="#contact">お問い合わせ</a>
+          </div>
+        </section>
+
+        <section class="lead">
+          <div>
+            <div class="section-label">ABOUT THE STUDIO</div>
+            <h2>ちゃんと届けたい、を<br>静かに形にする。</h2>
+          </div>
+          <div class="lead-card">
+            <p>くゆらすは、大げさなブランディングではなく、その人の活動や手仕事の温度が自然に伝わる1ページを作ります。</p>
+          </div>
+        </section>
+
+        <section class="services">
+          <div class="section-label">WHAT WE DO</div>
+          <h2>できること</h2>
+          <div class="service-grid">
+            <article class="service">
+              <div class="num">01</div><div class="doodle"></div>
+              <h3>1ページホームページ制作</h3>
+              <p>スマホ対応、文章整理、構成設計、公開サポートまで。</p>
+            </article>
+            <article class="service">
+              <div class="num">02</div><div class="doodle"></div>
+              <h3>言葉の整理</h3>
+              <p>「何をどう伝えればいいかわからない」を一緒にほどきます。</p>
+            </article>
+            <article class="service">
+              <div class="num">03</div><div class="doodle"></div>
+              <h3>活動の見え方づくり</h3>
+              <p>工場、お店、作品、作り手の背景が自然に伝わる形に整えます。</p>
+            </article>
+          </div>
+        </section>
+
+        <section class="for">
+          <div class="section-label">FOR YOU</div>
+          <h2>こんな方へ</h2>
+          <ul>
+            <li>小さなお店を営んでいる方。</li>
+            <li>個人で作品を作っている方。</li>
+            <li>SNSだけでは伝えきれない活動がある方。</li>
+            <li>自分らしく、無理なく届けたい方。</li>
+          </ul>
+        </section>
+
+        <section class="plan">
+          <div>
+            <div class="section-label">PLAN</div>
+            <h2>小さなLP制作プラン</h2>
+            <p>最初の一歩として、活動の核が伝わる1ページを制作します。</p>
+          </div>
+          <div class="price">
+            <strong>50,000<small>円〜</small></strong>
+            <div class="included">
+              <span>構成設計</span><span>文章整理</span><span>1ページデザイン</span><span>スマホ対応</span><span>公開サポート</span>
+            </div>
+            <p>※写真撮影、ロゴ制作、複雑な予約機能などは別途相談。</p>
+          </div>
+        </section>
+
+        <section class="flow">
+          <div class="section-label">FLOW</div>
+          <h2>制作の流れ</h2>
+          <div class="steps">
+            <div class="step"><b>01</b><span>お話を聞く</span></div>
+            <div class="step"><b>02</b><span>伝えたいことを整理する</span></div>
+            <div class="step"><b>03</b><span>構成と文章をつくる</span></div>
+            <div class="step"><b>04</b><span>デザイン・実装する</span></div>
+            <div class="step"><b>05</b><span>公開する</span></div>
+          </div>
+        </section>
+
+        <section class="about">
+          <div class="about-inner">
+            <div class="section-label">KUYURASU</div>
+            <h2>暮らす、揺らす、燻らす。</h2>
+            <p>誰かの活動を大きく燃やすのではなく、その人の中にある火から、静かに煙が立ち上るように。そんなホームページを作りたいと思っています。</p>
+          </div>
+          <svg class="smoke-line" viewBox="0 0 520 180" fill="none" aria-hidden="true">
+            <path d="M25 126C83 67 135 180 200 96C251 30 300 151 357 82C405 24 449 78 497 42" stroke="white" stroke-width="5" stroke-linecap="round" opacity=".75"/>
+          </svg>
+        </section>
+
+        <section class="contact" id="contact">
+          <div>
+            <div class="section-label">CONTACT</div>
+            <h2>相談する</h2>
+            <p>まずは、今やっている活動やお店のことを聞かせてください。まだ依頼するか決まっていなくても大丈夫です。</p>
+          </div>
+          <form>
+            <label>お名前</label>
+            <input placeholder="例：くゆらす 太郎" />
+            <label>メールアドレス</label>
+            <input placeholder="example@mail.com" />
+            <label>活動やお店のこと</label>
+            <textarea placeholder="いま困っていること、伝えたいことなど"></textarea>
+            <button class="submit" type="button">フォームを送信</button>
+          </form>
+        </section>
+
+        <footer>
+          <strong>KUYURASU / くゆらす</strong>
+          <span>small LP studio for makers and local shops</span>
+        </footer>
+      </div>
+    </div>
+  </main>
+
+<script>
+  const viewport = document.getElementById('viewport');
+  document.querySelectorAll('.toolbar button').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      document.querySelectorAll('.toolbar button').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      viewport.classList.toggle('phone', btn.dataset.view === 'phone');
+    });
+  });
+</script>
+</body>
+</html>
