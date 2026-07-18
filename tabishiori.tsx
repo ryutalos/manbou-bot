@@ -204,16 +204,6 @@ const IC = {
   clock: "M12 3.8a8.2 8.2 0 1 0 0 16.4 8.2 8.2 0 0 0 0-16.4Z M12 7.6V12l3 2.2",
 };
 
-function IcDots({ size = 18 }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-      <circle cx="5.5" cy="12" r="1.7" />
-      <circle cx="12" cy="12" r="1.7" />
-      <circle cx="18.5" cy="12" r="1.7" />
-    </svg>
-  );
-}
-
 function IcHandle({ size = 17 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -253,6 +243,78 @@ function PickerField({ type, value, onChange, min, placeholder, icon }) {
   );
 }
 
+// 分ステッパー
+// ※コンポーネント内で定義すると再レンダーごとに再マウントされ、
+//   入力中にフォーカスが外れるバグになるため必ずモジュールスコープに置く
+function Stepper({ value, onChange, step = 5, suffix }) {
+  return (
+    <span className="inline-flex items-center gap-1">
+      <button
+        onClick={() => onChange(Math.max(0, (Number(value) || 0) - step))}
+        className="pill w-9 h-9 rounded-full text-base leading-none shrink-0"
+        style={{ color: C.ink }}
+        aria-label="減らす"
+      >
+        −
+      </button>
+      <span className="inline-flex items-baseline whitespace-nowrap">
+        <input
+          type="number"
+          inputMode="numeric"
+          min={0}
+          value={value}
+          onFocus={(e) => e.target.select()}
+          onChange={(e) => onChange(Math.max(0, parseInt(e.target.value || "0", 10) || 0))}
+          className="w-8 text-center tabular-nums bg-transparent font-bold"
+          style={{ color: C.ink }}
+          aria-label="分を入力"
+        />
+        <span className="text-sm font-medium" style={{ color: C.ink }}>{suffix}</span>
+      </span>
+      <button
+        onClick={() => onChange((Number(value) || 0) + step)}
+        className="pill w-9 h-9 rounded-full text-base leading-none shrink-0"
+        style={{ color: C.ink }}
+        aria-label="増やす"
+      >
+        ＋
+      </button>
+    </span>
+  );
+}
+
+// 編集/当日トグル: 編集=黒、当日=青のピル
+function ModeToggle({ mode, onSelect }) {
+  return (
+    <div className="pill flex rounded-full p-1">
+      {[
+        { id: "edit", label: "編集" },
+        { id: "day", label: "当日" },
+      ].map((m) => (
+        <button
+          key={m.id}
+          onClick={() => onSelect(m.id)}
+          className="px-5 py-2 rounded-full text-sm font-bold"
+          style={
+            mode === m.id
+              ? {
+                  background: m.id === "day" ? C.key : C.black,
+                  color: "#fff",
+                  boxShadow:
+                    m.id === "day"
+                      ? "0 6px 14px rgba(32,0,255,0.3)"
+                      : "0 6px 14px rgba(17,17,17,0.25)",
+                }
+              : { color: C.sub }
+          }
+        >
+          {m.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 // 注意バナー: 丸いアイコン + テキスト
 function Notice({ children }) {
   return (
@@ -283,7 +345,6 @@ export default function TabiShiori() {
   const [saveErr, setSaveErr] = useState(false);
   const [now, setNow] = useState(Date.now());
   const [viewerSrc, setViewerSrc] = useState(null); // 写真の拡大表示
-  const [menuOpen, setMenuOpen] = useState(false); // 右上「…」メニュー
 
   const [storageOk, setStorageOk] = useState(true);
   const [bkCopied, setBkCopied] = useState(false);
@@ -534,8 +595,13 @@ export default function TabiShiori() {
     setCurrentId(null);
     setTrip(null);
     setOpenId(null);
-    setMenuOpen(false);
     setAddingDay(null);
+  };
+
+  const switchMode = (id) => {
+    setMode(id);
+    setOpenId(null);
+    setNow(Date.now());
   };
 
   // ── 旅程内の操作 ──
@@ -708,75 +774,6 @@ export default function TabiShiori() {
     });
   };
 
-  const Stepper = ({ value, onChange, step = 5, suffix }) => (
-    <span className="inline-flex items-center gap-1">
-      <button
-        onClick={() => onChange(Math.max(0, (Number(value) || 0) - step))}
-        className="pill w-9 h-9 rounded-full text-base leading-none shrink-0"
-        style={{ color: C.ink }}
-        aria-label="減らす"
-      >
-        −
-      </button>
-      <span className="inline-flex items-baseline whitespace-nowrap">
-        <input
-          type="number"
-          inputMode="numeric"
-          min={0}
-          value={value}
-          onChange={(e) => onChange(Math.max(0, parseInt(e.target.value || "0", 10) || 0))}
-          className="w-8 text-center tabular-nums bg-transparent font-bold"
-          style={{ color: C.ink }}
-          aria-label="分を入力"
-        />
-        <span className="text-sm font-medium" style={{ color: C.ink }}>{suffix}</span>
-      </span>
-      <button
-        onClick={() => onChange((Number(value) || 0) + step)}
-        className="pill w-9 h-9 rounded-full text-base leading-none shrink-0"
-        style={{ color: C.ink }}
-        aria-label="増やす"
-      >
-        ＋
-      </button>
-    </span>
-  );
-
-  // 編集/当日トグル: 編集=黒、当日=青のピル
-  const ModeToggle = () => (
-    <div className="pill flex rounded-full p-1">
-      {[
-        { id: "edit", label: "編集" },
-        { id: "day", label: "当日" },
-      ].map((m) => (
-        <button
-          key={m.id}
-          onClick={() => {
-            setMode(m.id);
-            setOpenId(null);
-            setMenuOpen(false);
-            setNow(Date.now());
-          }}
-          className="px-5 py-2 rounded-full text-sm font-bold"
-          style={
-            mode === m.id
-              ? {
-                  background: m.id === "day" ? C.key : C.black,
-                  color: "#fff",
-                  boxShadow:
-                    m.id === "day"
-                      ? "0 6px 14px rgba(32,0,255,0.3)"
-                      : "0 6px 14px rgba(17,17,17,0.25)",
-                }
-              : { color: C.sub }
-          }
-        >
-          {m.label}
-        </button>
-      ))}
-    </div>
-  );
-
   const nowDate = new Date(now);
   const nowMin = nowDate.getHours() * 60 + nowDate.getMinutes();
   const nowText = `${String(nowDate.getHours()).padStart(2, "0")}:${String(
@@ -833,32 +830,7 @@ export default function TabiShiori() {
         {/* ════════ ホーム: 旅程一覧 ════════ */}
         {!trip && (
           <>
-            <header className="flex justify-end gap-2.5 mb-8">
-              <button
-                onClick={exportBackup}
-                className="pill px-4 py-2.5 rounded-full text-sm font-medium inline-flex items-center gap-1.5"
-                style={{ color: C.ink }}
-              >
-                <Ic d={IC.upload} size={15} />
-                {bkCopied ? "コピーした ✓" : "書き出し"}
-              </button>
-              <button
-                onClick={() => {
-                  setImportOpen((v) => !v);
-                  setImportErr(false);
-                }}
-                className="pill px-4 py-2.5 rounded-full text-sm font-medium inline-flex items-center gap-1.5"
-                style={{
-                  color: C.ink,
-                  ...(importOpen ? { border: `1px solid ${C.ink}` } : {}),
-                }}
-              >
-                <Ic d={IC.download} size={15} />
-                読み込み
-              </button>
-            </header>
-
-            <div className="text-center mb-9">
+            <div className="text-center pt-6 mb-9">
               <h1 className="flex items-center justify-center gap-3">
                 <Logo size={52} />
                 <span className="text-4xl font-extrabold" style={{ letterSpacing: "0.06em" }}>
@@ -911,9 +883,43 @@ export default function TabiShiori() {
             )}
 
             {!storageOk && loaded && (
-              <Notice>
-                この環境ではデータの保存が動作していません。アプリを閉じると旅程が消えるため、作業後に「書き出し」でバックアップをコピーし、メモ帳などに貼って保管してください。次回「読み込み」で復元できます。
-              </Notice>
+              <div className="p-4 mb-5" style={{ ...PANEL, borderRadius: 26 }}>
+                <div className="flex items-center gap-4">
+                  <span
+                    className="pill w-12 h-12 rounded-full flex items-center justify-center shrink-0"
+                    style={{ color: C.key }}
+                  >
+                    <Ic d={IC.warn} size={22} />
+                  </span>
+                  <p className="text-sm leading-relaxed" style={{ color: C.ink }}>
+                    この環境ではデータの保存が動作していません。アプリを閉じると旅程が消えるため、作業後に「書き出し」でバックアップをコピーし、メモ帳などに貼って保管してください。次回「読み込み」で復元できます。
+                  </p>
+                </div>
+                <div className="flex gap-2.5 mt-3.5 pl-16">
+                  <button
+                    onClick={exportBackup}
+                    className="pill px-4 py-2 rounded-full text-sm font-medium inline-flex items-center gap-1.5"
+                    style={{ color: C.ink }}
+                  >
+                    <Ic d={IC.upload} size={14} />
+                    {bkCopied ? "コピーした ✓" : "書き出し"}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setImportOpen((v) => !v);
+                      setImportErr(false);
+                    }}
+                    className="pill px-4 py-2 rounded-full text-sm font-medium inline-flex items-center gap-1.5"
+                    style={{
+                      color: C.ink,
+                      ...(importOpen ? { border: `1px solid ${C.ink}` } : {}),
+                    }}
+                  >
+                    <Ic d={IC.download} size={14} />
+                    読み込み
+                  </button>
+                </div>
+              </div>
             )}
 
             <button
@@ -959,7 +965,7 @@ export default function TabiShiori() {
                     )}
                   </div>
                   <div className="min-w-0">
-                    <div className="font-bold text-xl truncate">{m.title}</div>
+                    <div className="font-bold text-xl leading-snug line-clamp-2">{m.title}</div>
                     <div className="text-sm mt-1.5" style={{ color: C.sub }}>
                       {rangeLabel(m)}
                       {m.startDate &&
@@ -990,7 +996,7 @@ export default function TabiShiori() {
                       e.stopPropagation();
                       deleteTrip(m.id);
                     }}
-                    className={`flex-1 py-3 rounded-full text-sm font-bold inline-flex items-center justify-center gap-1.5 ${
+                    className={`flex-1 py-3 rounded-full text-sm font-bold inline-flex items-center justify-center gap-1.5 whitespace-nowrap ${
                       deleteArm === m.id ? "" : "pill"
                     }`}
                     style={
@@ -1004,7 +1010,7 @@ export default function TabiShiori() {
                     }
                   >
                     <Ic d={IC.trash} size={15} />
-                    {deleteArm === m.id ? "もう一度タップで削除" : "削除"}
+                    {deleteArm === m.id ? "もう一度タップ" : "削除"}
                   </button>
                 </div>
               </div>
@@ -1031,59 +1037,31 @@ export default function TabiShiori() {
                   ミチノリ
                 </span>
               </div>
-              <div className="relative">
-                <button
-                  onClick={() => setMenuOpen((v) => !v)}
-                  className="pill w-11 h-11 rounded-full flex items-center justify-center"
-                  style={{ color: C.ink }}
-                  aria-label="メニュー"
-                >
-                  <IcDots />
-                </button>
-                {menuOpen && (
-                  <>
-                    <div className="fixed inset-0 z-30" onClick={() => setMenuOpen(false)} />
-                    <div
-                      className="absolute right-0 top-12 z-40 py-1.5 w-48"
-                      style={{ ...CARD, borderRadius: 18 }}
-                    >
-                      <button
-                        onClick={() => {
-                          shareText();
-                          setMenuOpen(false);
-                        }}
-                        className="w-full text-left px-4 py-2.5 text-sm font-medium inline-flex items-center gap-2"
-                        style={{ color: C.ink }}
-                      >
-                        <Ic d={IC.upload} size={15} />
-                        テキストで共有
-                      </button>
-                    </div>
-                  </>
+              <button
+                onClick={shareText}
+                className="pill w-11 h-11 rounded-full flex items-center justify-center"
+                style={{ color: copied ? C.key : C.ink }}
+                aria-label="テキストで共有"
+                title="テキストで共有"
+              >
+                {copied ? (
+                  <span className="text-base font-bold leading-none">✓</span>
+                ) : (
+                  <Ic d={IC.upload} size={18} />
                 )}
-              </div>
+              </button>
             </div>
 
             {/* ヘッダー: 編集=素のまま / 当日=カードにまとめる */}
             {mode === "edit" ? (
               <header className="mb-5">
-                <div className="flex items-center gap-3">
-                  <input
-                    value={trip.title}
-                    onChange={(e) => set({ title: e.target.value })}
-                    className="text-3xl font-bold bg-transparent w-full min-w-0"
-                    style={{ color: C.ink }}
-                    placeholder="旅のタイトル"
-                  />
-                  <button
-                    onClick={shareText}
-                    className="pill shrink-0 text-sm px-4 py-2.5 rounded-full whitespace-nowrap font-medium inline-flex items-center gap-1.5"
-                    style={{ color: C.ink }}
-                  >
-                    <Ic d={IC.upload} size={15} />
-                    {copied ? "コピーした ✓" : "テキストで共有"}
-                  </button>
-                </div>
+                <input
+                  value={trip.title}
+                  onChange={(e) => set({ title: e.target.value })}
+                  className="text-3xl font-bold bg-transparent w-full min-w-0"
+                  style={{ color: C.ink }}
+                  placeholder="旅のタイトル"
+                />
 
                 <div className="flex items-center gap-2 mt-5 flex-wrap">
                   <PickerField
@@ -1113,27 +1091,17 @@ export default function TabiShiori() {
                 </div>
 
                 <div className="flex justify-end mt-4">
-                  <ModeToggle />
+                  <ModeToggle mode={mode} onSelect={switchMode} />
                 </div>
               </header>
             ) : (
               <header className="p-5 mb-5" style={PANEL}>
-                <div className="flex items-center gap-3">
-                  <div className="text-3xl font-bold flex-1 min-w-0 truncate">{trip.title}</div>
-                  <button
-                    onClick={shareText}
-                    className="pill shrink-0 text-sm px-4 py-2.5 rounded-full whitespace-nowrap font-medium inline-flex items-center gap-1.5"
-                    style={{ color: C.ink }}
-                  >
-                    <Ic d={IC.upload} size={15} />
-                    {copied ? "コピーした ✓" : "テキストで共有"}
-                  </button>
-                </div>
-                <div className="flex items-center justify-between mt-4">
+                <div className="text-2xl font-bold leading-snug break-words">{trip.title}</div>
+                <div className="flex items-center justify-between gap-3 mt-4 flex-wrap">
                   <span className="text-base font-medium" style={{ color: C.sub }}>
                     {rangeLabel(trip)}
                   </span>
-                  <ModeToggle />
+                  <ModeToggle mode={mode} onSelect={switchMode} />
                 </div>
               </header>
             )}
@@ -1168,7 +1136,7 @@ export default function TabiShiori() {
                     {/* 日区切り */}
                     <div className="flex items-center gap-2.5 pt-7 pb-4">
                       <span
-                        className={`font-bold text-white ${
+                        className={`font-bold text-white whitespace-nowrap shrink-0 ${
                           mode === "day" ? "text-base px-3.5 py-1 rounded-xl" : "text-sm px-3 py-0.5 rounded-lg"
                         }`}
                         style={{
@@ -1181,11 +1149,18 @@ export default function TabiShiori() {
                       >
                         Day {dayIdx + 1}
                       </span>
-                      <span className={mode === "day" ? "text-2xl font-bold" : "text-base font-bold"}>
+                      <span
+                        className={`whitespace-nowrap ${
+                          mode === "day" ? "text-2xl font-bold" : "text-base font-bold"
+                        }`}
+                      >
                         {dateLabel(trip, dayIdx)}
                       </span>
                       {mode === "edit" && (
-                        <span className="ml-auto flex items-center gap-2 text-xs" style={{ color: C.sub }}>
+                        <span
+                          className="ml-auto flex items-center gap-2 text-xs whitespace-nowrap"
+                          style={{ color: C.sub }}
+                        >
                           この日の出発
                           <PickerField
                             type="time"
@@ -1370,54 +1345,71 @@ export default function TabiShiori() {
                                         : {}),
                                     }}
                                   >
-                                    <div className="flex items-center gap-2 pl-4 pr-1 py-3.5">
-                                      <span
-                                        className="tabular-nums text-xl font-bold shrink-0"
-                                        onClick={() => setOpenId(isOpen ? null : s.id)}
-                                      >
-                                        {s.fixedArrival ? "📌" : ""}
-                                        {t.arrive.nextDay ? "翌" : ""}
-                                        {t.arrive.text}
-                                      </span>
-                                      <input
-                                        value={s.name}
-                                        onChange={(e) => setSpot(dayIdx, s.id, { name: e.target.value })}
-                                        placeholder="スポット名"
-                                        className="flex-1 min-w-0 bg-transparent text-base font-medium"
-                                        style={{ color: C.ink }}
-                                      />
-                                      <button
-                                        onClick={() =>
-                                          setSpot(dayIdx, s.id, { stay: s.stay > 0 ? 0 : 60 })
-                                        }
-                                        className="shrink-0 text-xs px-3 py-1.5 rounded-full font-medium"
-                                        style={
-                                          isVia
-                                            ? { background: C.black, color: "#fff" }
-                                            : {
-                                                border: `1px solid ${C.border}`,
-                                                color: C.sub,
-                                                background: "rgba(255,255,255,0.7)",
-                                              }
-                                        }
-                                        aria-label="経由に切り替え"
-                                      >
-                                        経由
-                                      </button>
-                                      <button
-                                        onClick={() => setOpenId(isOpen ? null : s.id)}
-                                        className="shrink-0 text-xs px-3 py-1.5 rounded-full font-medium tabular-nums"
-                                        style={{
-                                          border: `1px solid ${C.border}`,
-                                          color: C.sub,
-                                          background: "rgba(255,255,255,0.7)",
-                                        }}
-                                        aria-label="詳細を開閉"
-                                      >
-                                        {s.stay > 0 ? `${s.stay}分` : "経由"} {isOpen ? "▴" : "▾"}
-                                      </button>
+                                    {/* 1行目: 時刻+スポット名 / 2行目: 経由・滞在ピル(入力欄を潰さない) */}
+                                    <div className="flex items-stretch">
+                                      <div className="flex-1 min-w-0 pl-4 py-3.5">
+                                        <div className="flex items-baseline gap-2.5">
+                                          <span
+                                            className="tabular-nums text-xl font-bold shrink-0"
+                                            onClick={() => setOpenId(isOpen ? null : s.id)}
+                                          >
+                                            {s.fixedArrival ? "📌" : ""}
+                                            {t.arrive.nextDay ? "翌" : ""}
+                                            {t.arrive.text}
+                                          </span>
+                                          <input
+                                            value={s.name}
+                                            onChange={(e) => setSpot(dayIdx, s.id, { name: e.target.value })}
+                                            placeholder="スポット名"
+                                            className="flex-1 min-w-0 bg-transparent text-base font-medium"
+                                            style={{ color: C.ink }}
+                                          />
+                                        </div>
+                                        <div className="flex items-center gap-2 mt-2.5">
+                                          <button
+                                            onClick={() =>
+                                              setSpot(dayIdx, s.id, { stay: s.stay > 0 ? 0 : 60 })
+                                            }
+                                            className="shrink-0 text-xs px-3 py-1.5 rounded-full font-medium"
+                                            style={
+                                              isVia
+                                                ? { background: C.black, color: "#fff" }
+                                                : {
+                                                    border: `1px solid ${C.border}`,
+                                                    color: C.sub,
+                                                    background: "rgba(255,255,255,0.7)",
+                                                  }
+                                            }
+                                            aria-label="経由に切り替え"
+                                          >
+                                            経由
+                                          </button>
+                                          <button
+                                            onClick={() => setOpenId(isOpen ? null : s.id)}
+                                            className="shrink-0 text-xs px-3 py-1.5 rounded-full font-medium tabular-nums"
+                                            style={{
+                                              border: `1px solid ${C.border}`,
+                                              color: C.sub,
+                                              background: "rgba(255,255,255,0.7)",
+                                            }}
+                                            aria-label="詳細を開閉"
+                                          >
+                                            {s.stay > 0 ? `${s.stay}分` : "経由"} {isOpen ? "▴" : "▾"}
+                                          </button>
+                                        </div>
+                                        {!isOpen && (s.memo || s.photos.length > 0) && (
+                                          <div
+                                            className="mt-2 text-sm truncate"
+                                            style={{ color: C.sub }}
+                                            onClick={() => setOpenId(isOpen ? null : s.id)}
+                                          >
+                                            {s.photos.length > 0 && `📷${s.photos.length} `}
+                                            {s.memo}
+                                          </div>
+                                        )}
+                                      </div>
                                       <div
-                                        className="handle flex items-center px-2 py-2 select-none shrink-0"
+                                        className="handle flex items-center px-2.5 select-none shrink-0"
                                         style={{ color: "#B9C2D8" }}
                                         onPointerDown={(e) => onDragStart(e, dayIdx, s.id)}
                                         onPointerMove={onDragMove}
@@ -1428,17 +1420,6 @@ export default function TabiShiori() {
                                         <IcHandle />
                                       </div>
                                     </div>
-
-                                    {!isOpen && (s.memo || s.photos.length > 0) && (
-                                      <div
-                                        className="px-4 pb-3 -mt-1.5 text-sm truncate"
-                                        style={{ color: C.sub }}
-                                        onClick={() => setOpenId(isOpen ? null : s.id)}
-                                      >
-                                        {s.photos.length > 0 && `📷${s.photos.length} `}
-                                        {s.memo}
-                                      </div>
-                                    )}
 
                                     {isOpen && (
                                       <div className="px-4 pb-4 border-t" style={{ borderColor: "#EAEDF5" }}>
