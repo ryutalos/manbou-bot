@@ -712,20 +712,20 @@ export default function TabiShiori() {
     <span className="inline-flex items-center gap-1">
       <button
         onClick={() => onChange(Math.max(0, (Number(value) || 0) - step))}
-        className="pill w-10 h-10 rounded-full text-base leading-none"
+        className="pill w-9 h-9 rounded-full text-base leading-none shrink-0"
         style={{ color: C.ink }}
         aria-label="減らす"
       >
         −
       </button>
-      <span className="inline-flex items-baseline">
+      <span className="inline-flex items-baseline whitespace-nowrap">
         <input
           type="number"
           inputMode="numeric"
           min={0}
           value={value}
           onChange={(e) => onChange(Math.max(0, parseInt(e.target.value || "0", 10) || 0))}
-          className="w-10 text-center tabular-nums bg-transparent font-bold"
+          className="w-8 text-center tabular-nums bg-transparent font-bold"
           style={{ color: C.ink }}
           aria-label="分を入力"
         />
@@ -733,7 +733,7 @@ export default function TabiShiori() {
       </span>
       <button
         onClick={() => onChange((Number(value) || 0) + step)}
-        className="pill w-10 h-10 rounded-full text-base leading-none"
+        className="pill w-9 h-9 rounded-full text-base leading-none shrink-0"
         style={{ color: C.ink }}
         aria-label="増やす"
       >
@@ -1307,12 +1307,12 @@ export default function TabiShiori() {
                                   )}
                                 </div>
 
-                                {/* 移動区間は破線 */}
+                                {/* 移動区間は破線(レールは外側paddingぶん左へ) */}
                                 {!isLast && (
                                   <div className="relative mb-3">
                                     <div
-                                      className="absolute left-[8px] top-0 bottom-0"
-                                      style={{ borderLeft: "2px dashed rgba(32,0,255,0.3)" }}
+                                      className="absolute top-0 bottom-0"
+                                      style={{ left: -28, borderLeft: "2px dashed rgba(32,0,255,0.3)" }}
                                     />
                                     <div
                                       className="flex items-center gap-2.5 py-2 pl-1 text-base"
@@ -1326,7 +1326,7 @@ export default function TabiShiori() {
                                         href={mapsUrl(s.name, nextName, s.travel.mode)}
                                         target="_blank"
                                         rel="noreferrer"
-                                        className="ml-auto underline font-bold py-2 pl-4 inline-flex items-center gap-0.5"
+                                        className="ml-auto underline font-bold py-2 pl-4 inline-flex items-center gap-0.5 whitespace-nowrap shrink-0"
                                         style={{ color: C.key }}
                                       >
                                         経路
@@ -1587,15 +1587,15 @@ export default function TabiShiori() {
 
                                 {!isLast && (
                                   <div className="relative pl-8 py-1.5 mb-3">
-                                    <div className="flex items-center gap-3 text-sm" style={{ color: C.sub }}>
-                                      <div className="pill flex rounded-full p-1">
+                                    <div className="flex items-center gap-2 text-sm" style={{ color: C.sub }}>
+                                      <div className="pill flex rounded-full p-1 shrink-0">
                                         {MODES.map((m) => (
                                           <button
                                             key={m.id}
                                             onClick={() =>
                                               setSpot(dayIdx, s.id, { travel: { ...s.travel, mode: m.id } })
                                             }
-                                            className="px-3 py-1.5 rounded-full"
+                                            className="px-2.5 py-1.5 rounded-full"
                                             style={{
                                               background: s.travel.mode === m.id ? C.black : "transparent",
                                             }}
@@ -1616,7 +1616,7 @@ export default function TabiShiori() {
                                         href={mapsUrl(s.name, nextName, s.travel.mode)}
                                         target="_blank"
                                         rel="noreferrer"
-                                        className="ml-auto font-bold inline-flex items-center gap-0.5"
+                                        className="ml-auto font-bold inline-flex items-center gap-0.5 whitespace-nowrap shrink-0"
                                         style={{ color: C.key }}
                                       >
                                         経路
