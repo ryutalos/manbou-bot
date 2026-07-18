@@ -159,14 +159,49 @@ function compressImage(file, maxSize = 1000, quality = 0.72) {
   });
 }
 
-// ── ロゴ(仮): 正式なSVGをもらったらここを差し替える ──
+// ── ロゴマーク: 支給PNGを元にSVGで再現 ──
+// 楕円3つ(黒・青・ラベンダー)の重なりで、交差部分は白抜き(XOR)
+// 複数箇所に描画するためidはインスタンスごとに一意にする
+let logoSeq = 0;
 function Logo({ size = 32 }) {
+  const idsRef = useRef(null);
+  if (!idsRef.current) {
+    const n = ++logoSeq;
+    idsRef.current = {
+      k: `lg-k${n}`,
+      b: `lg-b${n}`,
+      l: `lg-l${n}`,
+      mk: `lg-mk${n}`,
+      mb: `lg-mb${n}`,
+      ml: `lg-ml${n}`,
+    };
+  }
+  const i = idsRef.current;
   return (
     <svg width={size} height={size} viewBox="0 0 100 100" aria-hidden="true">
-      <ellipse cx="34" cy="32" rx="20" ry="26" transform="rotate(-30 34 32)" fill="#111111" />
-      <ellipse cx="54" cy="56" rx="30" ry="21" transform="rotate(-28 54 56)" fill="#2000FF" />
-      <circle cx="70" cy="72" r="14" fill="#C9CCF2" />
-      <ellipse cx="46" cy="40" rx="12" ry="9" transform="rotate(-28 46 40)" fill="#EDEFF9" />
+      <defs>
+        <ellipse id={i.k} cx="36.5" cy="31" rx="15" ry="20.5" transform="rotate(24 36.5 31)" />
+        <ellipse id={i.b} cx="53" cy="52.5" rx="37" ry="19.5" transform="rotate(-29 53 52.5)" />
+        <circle id={i.l} cx="66.5" cy="64" r="12" />
+        <mask id={i.mk}>
+          <rect x="-10" y="-10" width="120" height="120" fill="#fff" />
+          <use href={`#${i.b}`} fill="#000" />
+          <use href={`#${i.l}`} fill="#000" />
+        </mask>
+        <mask id={i.mb}>
+          <rect x="-10" y="-10" width="120" height="120" fill="#fff" />
+          <use href={`#${i.k}`} fill="#000" />
+          <use href={`#${i.l}`} fill="#000" />
+        </mask>
+        <mask id={i.ml}>
+          <rect x="-10" y="-10" width="120" height="120" fill="#fff" />
+          <use href={`#${i.k}`} fill="#000" />
+          <use href={`#${i.b}`} fill="#000" />
+        </mask>
+      </defs>
+      <use href={`#${i.k}`} fill="#111111" mask={`url(#${i.mk})`} />
+      <use href={`#${i.b}`} fill={C.key} mask={`url(#${i.mb})`} />
+      <use href={`#${i.l}`} fill="#C9C6F0" mask={`url(#${i.ml})`} />
     </svg>
   );
 }
