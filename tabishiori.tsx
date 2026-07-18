@@ -1098,33 +1098,43 @@ export default function TabiShiori() {
         {/* ════════ 旅程画面 ════════ */}
         {trip && (
           <>
-            {/* 上部バー: ×｜ロゴ｜… */}
-            <div className="relative flex items-center justify-between mb-7">
-              <button
-                onClick={backToHome}
-                className="pill w-11 h-11 rounded-full flex items-center justify-center"
-                style={{ color: C.ink }}
-                aria-label="一覧へ戻る"
-              >
-                <Ic d={IC.x} size={18} sw={2} />
-              </button>
-              <div className="flex items-center gap-2">
-                <Logo size={24} />
-                <span className="font-extrabold text-lg" style={{ letterSpacing: "0.14em" }}>
-                  ミチノリ
-                </span>
+            {/* 上部バー: ×＋ロゴ｜テキストで共有 */}
+            <div className="relative flex items-center justify-between gap-2 mb-7">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <button
+                  onClick={backToHome}
+                  className="pill w-11 h-11 rounded-full flex items-center justify-center shrink-0"
+                  style={{ color: C.ink }}
+                  aria-label="一覧へ戻る"
+                >
+                  <Ic d={IC.x} size={18} sw={2} />
+                </button>
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <Logo size={24} />
+                  <span
+                    className="font-extrabold text-lg truncate"
+                    style={{ letterSpacing: "0.1em" }}
+                  >
+                    ミチノリ
+                  </span>
+                </div>
               </div>
               <button
                 onClick={shareText}
-                className="pill w-11 h-11 rounded-full flex items-center justify-center"
+                className="pill h-11 px-4 rounded-full flex items-center gap-1.5 shrink-0 text-sm font-medium whitespace-nowrap"
                 style={{ color: copied ? C.key : C.ink }}
                 aria-label="テキストで共有"
-                title="テキストで共有"
               >
                 {copied ? (
-                  <span className="text-base font-bold leading-none">✓</span>
+                  <>
+                    <span className="text-base font-bold leading-none">✓</span>
+                    コピーした
+                  </>
                 ) : (
-                  <Ic d={IC.upload} size={18} />
+                  <>
+                    <Ic d={IC.upload} size={16} />
+                    テキストで共有
+                  </>
                 )}
               </button>
             </div>
