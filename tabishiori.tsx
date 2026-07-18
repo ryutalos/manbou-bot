@@ -221,7 +221,7 @@ function PickerField({ type, value, onChange, min, placeholder, icon }) {
   return (
     <label
       className="pill relative inline-flex items-center gap-1.5 rounded-full select-none"
-      style={{ padding: "8px 14px" }}
+      style={{ padding: "7px 12px" }}
     >
       <span aria-hidden="true" className="inline-flex text-sm" style={{ color: C.sub }}>
         {icon}
@@ -246,12 +246,24 @@ function PickerField({ type, value, onChange, min, placeholder, icon }) {
 // 分ステッパー
 // ※コンポーネント内で定義すると再レンダーごとに再マウントされ、
 //   入力中にフォーカスが外れるバグになるため必ずモジュールスコープに置く
+// ※type=number だと "011" のような先頭ゼロがReactに上書きされず残るため、
+//   テキスト入力+数字サニタイズで管理する
 function Stepper({ value, onChange, step = 5, suffix }) {
+  const [editing, setEditing] = useState(null); // フォーカス中の生テキスト
+  const commit = (raw) => {
+    const digits = raw.replace(/[^0-9]/g, "").replace(/^0+(?=[0-9])/, "").slice(0, 4);
+    setEditing(digits);
+    onChange(Math.max(0, parseInt(digits || "0", 10)));
+  };
+  const bump = (delta) => {
+    setEditing(null);
+    onChange(Math.max(0, (Number(value) || 0) + delta));
+  };
   return (
     <span className="inline-flex items-center gap-1">
       <button
-        onClick={() => onChange(Math.max(0, (Number(value) || 0) - step))}
-        className="pill w-9 h-9 rounded-full text-base leading-none shrink-0"
+        onClick={() => bump(-step)}
+        className="pill w-8 h-8 rounded-full text-base leading-none shrink-0"
         style={{ color: C.ink }}
         aria-label="減らす"
       >
@@ -259,12 +271,14 @@ function Stepper({ value, onChange, step = 5, suffix }) {
       </button>
       <span className="inline-flex items-baseline whitespace-nowrap">
         <input
-          type="number"
+          type="text"
           inputMode="numeric"
-          min={0}
-          value={value}
-          onFocus={(e) => e.target.select()}
-          onChange={(e) => onChange(Math.max(0, parseInt(e.target.value || "0", 10) || 0))}
+          pattern="[0-9]*"
+          value={editing !== null ? editing : String(value)}
+          placeholder={String(value)}
+          onFocus={() => setEditing("")}
+          onChange={(e) => commit(e.target.value)}
+          onBlur={() => setEditing(null)}
           className="w-8 text-center tabular-nums bg-transparent font-bold"
           style={{ color: C.ink }}
           aria-label="分を入力"
@@ -272,8 +286,8 @@ function Stepper({ value, onChange, step = 5, suffix }) {
         <span className="text-sm font-medium" style={{ color: C.ink }}>{suffix}</span>
       </span>
       <button
-        onClick={() => onChange((Number(value) || 0) + step)}
-        className="pill w-9 h-9 rounded-full text-base leading-none shrink-0"
+        onClick={() => bump(step)}
+        className="pill w-8 h-8 rounded-full text-base leading-none shrink-0"
         style={{ color: C.ink }}
         aria-label="増やす"
       >
@@ -357,6 +371,7 @@ export default function TabiShiori() {
   const [dragId, setDragId] = useState(null);
   const [dragOffset, setDragOffset] = useState(0);
   const dragRef = useRef(null);
+  const pressTimer = useRef(null); // 長押し判定タイマー
   const rowRefs = useRef({});
   const fileRefs = useRef({});
 
@@ -674,19 +689,45 @@ export default function TabiShiori() {
     if (urls.length) setSpot(dayIdx, id, { photos: [...spot.photos, ...urls] });
   };
 
-  // ── D&D ──
+  // ── D&D: 誤タッチ防止のため長押し(250ms)でドラッグ開始 ──
   const onDragStart = (e, dayIdx, id) => {
     e.preventDefault();
-    e.currentTarget.setPointerCapture?.(e.pointerId);
-    dragRef.current = { id, dayIdx, startY: e.clientY };
-    setDragId(id);
-    setDragOffset(0);
-    setOpenId(null);
+    const target = e.currentTarget;
+    const pointerId = e.pointerId;
+    dragRef.current = {
+      id,
+      dayIdx,
+      startY: e.clientY,
+      sx: e.clientX,
+      sy: e.clientY,
+      lastY: e.clientY,
+      armed: false,
+    };
+    clearTimeout(pressTimer.current);
+    pressTimer.current = setTimeout(() => {
+      const d = dragRef.current;
+      if (!d || d.id !== id) return;
+      d.armed = true;
+      d.startY = d.lastY;
+      target.setPointerCapture?.(pointerId);
+      setDragId(id);
+      setDragOffset(0);
+      setOpenId(null);
+    }, 250);
   };
 
   const onDragMove = (e) => {
     const d = dragRef.current;
     if (!d) return;
+    d.lastY = e.clientY;
+    if (!d.armed) {
+      // 長押し成立前に大きく動いたらスクロール等とみなしてキャンセル
+      if (Math.abs(e.clientY - d.sy) > 10 || Math.abs(e.clientX - d.sx) > 10) {
+        clearTimeout(pressTimer.current);
+        dragRef.current = null;
+      }
+      return;
+    }
     const offset = e.clientY - d.startY;
     setDragOffset(offset);
     setTrip((t) => {
@@ -714,6 +755,7 @@ export default function TabiShiori() {
   };
 
   const onDragEnd = () => {
+    clearTimeout(pressTimer.current);
     dragRef.current = null;
     setDragId(null);
     setDragOffset(0);
@@ -1134,7 +1176,7 @@ export default function TabiShiori() {
                 return (
                   <section key={dayIdx}>
                     {/* 日区切り */}
-                    <div className="flex items-center gap-2.5 pt-7 pb-4">
+                    <div className="flex items-center gap-x-2.5 gap-y-2 pt-7 pb-4 flex-wrap">
                       <span
                         className={`font-bold text-white whitespace-nowrap shrink-0 ${
                           mode === "day" ? "text-base px-3.5 py-1 rounded-xl" : "text-sm px-3 py-0.5 rounded-lg"
@@ -1290,23 +1332,31 @@ export default function TabiShiori() {
                                       style={{ left: -28, borderLeft: "2px dashed rgba(32,0,255,0.3)" }}
                                     />
                                     <div
-                                      className="flex items-center gap-2.5 py-2 pl-1 text-base"
+                                      className="flex items-center gap-2.5 py-2 pl-1 pr-1 text-base"
                                       style={{ color: C.ink }}
                                     >
-                                      <span className="text-xl">{travelMode.icon}</span>
-                                      <span className="font-medium">
-                                        {travelMode.label} {s.travel.minutes}分
-                                      </span>
-                                      <a
-                                        href={mapsUrl(s.name, nextName, s.travel.mode)}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        className="ml-auto underline font-bold py-2 pl-4 inline-flex items-center gap-0.5 whitespace-nowrap shrink-0"
-                                        style={{ color: C.key }}
-                                      >
-                                        経路
-                                        <Ic d={IC.arrow} size={15} sw={2.2} />
-                                      </a>
+                                      {(Number(s.travel.minutes) || 0) > 0 ? (
+                                        <>
+                                          <span className="text-xl">{travelMode.icon}</span>
+                                          <span className="font-medium">
+                                            {travelMode.label} {s.travel.minutes}分
+                                          </span>
+                                          <a
+                                            href={mapsUrl(s.name, nextName, s.travel.mode)}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="ml-auto underline font-bold py-2 pl-4 inline-flex items-center gap-0.5 whitespace-nowrap shrink-0"
+                                            style={{ color: C.key }}
+                                          >
+                                            経路
+                                            <Ic d={IC.arrow} size={15} sw={2.2} />
+                                          </a>
+                                        </>
+                                      ) : (
+                                        <span className="text-sm font-medium" style={{ color: C.sub }}>
+                                          移動なし
+                                        </span>
+                                      )}
                                     </div>
                                   </div>
                                 )}
@@ -1365,12 +1415,12 @@ export default function TabiShiori() {
                                             style={{ color: C.ink }}
                                           />
                                         </div>
-                                        <div className="flex items-center gap-2 mt-2.5">
+                                        <div className="flex items-center gap-2 mt-2.5 flex-wrap">
                                           <button
                                             onClick={() =>
                                               setSpot(dayIdx, s.id, { stay: s.stay > 0 ? 0 : 60 })
                                             }
-                                            className="shrink-0 text-xs px-3 py-1.5 rounded-full font-medium"
+                                            className="shrink-0 text-xs px-2.5 py-1.5 rounded-full font-medium"
                                             style={
                                               isVia
                                                 ? { background: C.black, color: "#fff" }
@@ -1386,15 +1436,26 @@ export default function TabiShiori() {
                                           </button>
                                           <button
                                             onClick={() => setOpenId(isOpen ? null : s.id)}
-                                            className="shrink-0 text-xs px-3 py-1.5 rounded-full font-medium tabular-nums"
+                                            className="shrink-0 text-xs px-2.5 py-1.5 rounded-full font-medium tabular-nums"
                                             style={{
                                               border: `1px solid ${C.border}`,
                                               color: C.sub,
                                               background: "rgba(255,255,255,0.7)",
                                             }}
-                                            aria-label="詳細を開閉"
                                           >
-                                            {s.stay > 0 ? `${s.stay}分` : "経由"} {isOpen ? "▴" : "▾"}
+                                            {isVia ? "滞在なし" : `滞在 ${s.stay}分`}
+                                          </button>
+                                          <button
+                                            onClick={() => setOpenId(isOpen ? null : s.id)}
+                                            className="shrink-0 text-xs px-2.5 py-1.5 rounded-full font-bold"
+                                            style={{
+                                              border: `1px solid ${isOpen ? C.key : C.border}`,
+                                              color: C.key,
+                                              background: isOpen ? C.keySoft : "rgba(255,255,255,0.7)",
+                                            }}
+                                            aria-label="メモ・写真・時刻指定を開閉"
+                                          >
+                                            詳細 {isOpen ? "▴" : "▾"}
                                           </button>
                                         </div>
                                         {!isOpen && (s.memo || s.photos.length > 0) && (
@@ -1567,8 +1628,8 @@ export default function TabiShiori() {
                                 </div>
 
                                 {!isLast && (
-                                  <div className="relative pl-8 py-1.5 mb-3">
-                                    <div className="flex items-center gap-2 text-sm" style={{ color: C.sub }}>
+                                  <div className="relative pl-8 pr-1 py-1.5 mb-3">
+                                    <div className="flex items-center gap-1.5 text-sm" style={{ color: C.sub }}>
                                       <div className="pill flex rounded-full p-1 shrink-0">
                                         {MODES.map((m) => (
                                           <button
@@ -1576,7 +1637,7 @@ export default function TabiShiori() {
                                             onClick={() =>
                                               setSpot(dayIdx, s.id, { travel: { ...s.travel, mode: m.id } })
                                             }
-                                            className="px-2.5 py-1.5 rounded-full"
+                                            className="px-2 py-1.5 rounded-full"
                                             style={{
                                               background: s.travel.mode === m.id ? C.black : "transparent",
                                             }}
@@ -1593,16 +1654,18 @@ export default function TabiShiori() {
                                           setSpot(dayIdx, s.id, { travel: { ...s.travel, minutes: v } })
                                         }
                                       />
-                                      <a
-                                        href={mapsUrl(s.name, nextName, s.travel.mode)}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        className="ml-auto font-bold inline-flex items-center gap-0.5 whitespace-nowrap shrink-0"
-                                        style={{ color: C.key }}
-                                      >
-                                        経路
-                                        <Ic d={IC.arrow} size={15} sw={2.2} />
-                                      </a>
+                                      {(Number(s.travel.minutes) || 0) > 0 && (
+                                        <a
+                                          href={mapsUrl(s.name, nextName, s.travel.mode)}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className="ml-auto font-bold inline-flex items-center gap-0.5 whitespace-nowrap shrink-0"
+                                          style={{ color: C.key }}
+                                        >
+                                          経路
+                                          <Ic d={IC.arrow} size={15} sw={2.2} />
+                                        </a>
+                                      )}
                                     </div>
                                   </div>
                                 )}
@@ -1649,7 +1712,7 @@ export default function TabiShiori() {
                                       120
                                     );
                                 }}
-                                placeholder="駅名・スポット名"
+                                placeholder="スポット名・やること"
                                 className="flex-1 min-w-0 px-4 py-3 rounded-full"
                                 style={{
                                   background: "rgba(255,255,255,0.8)",
