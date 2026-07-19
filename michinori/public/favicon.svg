@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <ellipse id="k" cx="36.5" cy="31" rx="15" ry="20.5" transform="rotate(24 36.5 31)"/>
+    <ellipse id="b" cx="53" cy="52.5" rx="37" ry="19.5" transform="rotate(-29 53 52.5)"/>
+    <circle id="l" cx="66.5" cy="64" r="12"/>
+    <mask id="mk"><rect x="-10" y="-10" width="120" height="120" fill="#fff"/><use href="#b" fill="#000"/><use href="#l" fill="#000"/></mask>
+    <mask id="mb"><rect x="-10" y="-10" width="120" height="120" fill="#fff"/><use href="#k" fill="#000"/><use href="#l" fill="#000"/></mask>
+    <mask id="ml"><rect x="-10" y="-10" width="120" height="120" fill="#fff"/><use href="#k" fill="#000"/><use href="#b" fill="#000"/></mask>
+  </defs>
+  <use href="#k" fill="#111111" mask="url(#mk)"/>
+  <use href="#b" fill="#2000FF" mask="url(#mb)"/>
+  <use href="#l" fill="#C9C6F0" mask="url(#ml)"/>
+</svg>
