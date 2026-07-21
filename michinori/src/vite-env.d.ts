@@ -9,9 +9,3 @@ declare global {
     storage?: KVStorage;
   }
 }
-
-// PNG などアセットを import できるように
-declare module "*.png" {
-  const src: string;
-  export default src;
-}

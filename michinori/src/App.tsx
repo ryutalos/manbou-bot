@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import markSrc from "./assets/logo-mark.png";
-import typeSrc from "./assets/logo-type.png";
+import { LogoMark, TYPE_SRC } from "./assets/logos";
 
 // ── ミチノリ v9 ──
 // UX/ロジックは v8 のまま、デザインをモックに合わせて刷新
@@ -161,28 +160,9 @@ function compressImage(file, maxSize = 1000, quality = 0.72) {
   });
 }
 
-// ── ロゴ: 支給の透過PNGをdata URIで埋め込み ──
-// MARK_SRC=ロゴマーク(正方形) / TYPE_SRC=ロゴタイプ「ミチノリ」
-const MARK_SRC = markSrc;
-const TYPE_SRC = typeSrc;
-
-// ロゴマーク。旧APIと互換のため size をそのまま幅/高さに使う
+// ロゴマークは branding モジュールの SVG を薄くラップ(旧 Logo API を維持)
 function Logo({ size = 32 }) {
-  return (
-    <img
-      src={MARK_SRC}
-      alt=""
-      aria-hidden="true"
-      draggable={false}
-      style={{
-        display: "block",
-        width: size,
-        height: size,
-        objectFit: "contain",
-        flex: "none",
-      }}
-    />
-  );
+  return <LogoMark size={size} />;
 }
 
 // ロゴタイプ「ミチノリ」。height で高さ指定、幅は自動
