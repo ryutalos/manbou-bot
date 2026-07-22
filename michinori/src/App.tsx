@@ -696,72 +696,97 @@ export default function TabiShiori() {
   };
 
   // ── D&D: 誤タッチ防止のため長押し(250ms)でドラッグ開始 ──
+  // 確定後は window でイベントを拾うため、指がハンドルから外れても追従する
+  // (iOS では小さな要素の setPointerCapture が不安定で、move を取りこぼすため)
+  const detachDrag = () => {
+    const d = dragRef.current;
+    if (d?.moveHandler) {
+      window.removeEventListener("pointermove", d.moveHandler);
+      window.removeEventListener("pointerup", d.upHandler);
+      window.removeEventListener("pointercancel", d.upHandler);
+    }
+  };
+
   const onDragStart = (e, dayIdx, id) => {
     e.preventDefault();
-    const target = e.currentTarget;
-    const pointerId = e.pointerId;
+    const startX = e.clientX;
+    const startY = e.clientY;
+
+    const moveHandler = (ev) => {
+      const d = dragRef.current;
+      if (!d || !d.armed) return;
+      ev.preventDefault?.();
+      const y = ev.clientY;
+      d.lastY = y;
+      const offset = y - d.startY;
+      setDragOffset(offset);
+      setTrip((t) => {
+        const day = getDay(t, d.dayIdx);
+        const idx = day.spots.findIndex((s) => s.id === d.id);
+        if (idx < 0) return t;
+        const check = (dir) => {
+          const j = idx + dir;
+          if (j < 0 || j >= day.spots.length) return false;
+          const el = rowRefs.current[day.spots[j].id];
+          if (!el) return false;
+          const r = el.getBoundingClientRect();
+          return dir < 0 ? y < r.top + r.height / 2 : y > r.top + r.height / 2;
+        };
+        let dir = 0;
+        if (offset < 0 && check(-1)) dir = -1;
+        else if (offset > 0 && check(1)) dir = 1;
+        if (dir === 0) return t;
+        const arr = [...day.spots];
+        [arr[idx], arr[idx + dir]] = [arr[idx + dir], arr[idx]];
+        d.startY = y;
+        setDragOffset(0);
+        return { ...t, days: { ...t.days, [d.dayIdx]: { ...day, spots: arr } } };
+      });
+    };
+    const upHandler = () => onDragEnd();
+
     dragRef.current = {
       id,
       dayIdx,
-      startY: e.clientY,
-      sx: e.clientX,
-      sy: e.clientY,
-      lastY: e.clientY,
+      startY,
+      sx: startX,
+      sy: startY,
+      lastY: startY,
       armed: false,
+      moveHandler,
+      upHandler,
     };
+
     clearTimeout(pressTimer.current);
     pressTimer.current = setTimeout(() => {
       const d = dragRef.current;
       if (!d || d.id !== id) return;
       d.armed = true;
       d.startY = d.lastY;
-      target.setPointerCapture?.(pointerId);
       setDragId(id);
       setDragOffset(0);
       setOpenId(null);
+      window.addEventListener("pointermove", moveHandler, { passive: false });
+      window.addEventListener("pointerup", upHandler);
+      window.addEventListener("pointercancel", upHandler);
     }, 250);
   };
 
-  const onDragMove = (e) => {
+  // 長押し成立前のプレ移動: 大きく動いたらスクロール等とみなしキャンセル
+  const onHandleMove = (e) => {
     const d = dragRef.current;
-    if (!d) return;
+    if (!d || d.armed) return;
     d.lastY = e.clientY;
-    if (!d.armed) {
-      // 長押し成立前に大きく動いたらスクロール等とみなしてキャンセル
-      if (Math.abs(e.clientY - d.sy) > 10 || Math.abs(e.clientX - d.sx) > 10) {
-        clearTimeout(pressTimer.current);
-        dragRef.current = null;
-      }
-      return;
+    if (Math.abs(e.clientY - d.sy) > 10 || Math.abs(e.clientX - d.sx) > 10) {
+      clearTimeout(pressTimer.current);
+      detachDrag();
+      dragRef.current = null;
     }
-    const offset = e.clientY - d.startY;
-    setDragOffset(offset);
-    setTrip((t) => {
-      const day = getDay(t, d.dayIdx);
-      const idx = day.spots.findIndex((s) => s.id === d.id);
-      if (idx < 0) return t;
-      const check = (dir) => {
-        const j = idx + dir;
-        if (j < 0 || j >= day.spots.length) return false;
-        const el = rowRefs.current[day.spots[j].id];
-        if (!el) return false;
-        const r = el.getBoundingClientRect();
-        return dir < 0 ? e.clientY < r.top + r.height / 2 : e.clientY > r.top + r.height / 2;
-      };
-      let dir = 0;
-      if (offset < 0 && check(-1)) dir = -1;
-      else if (offset > 0 && check(1)) dir = 1;
-      if (dir === 0) return t;
-      const arr = [...day.spots];
-      [arr[idx], arr[idx + dir]] = [arr[idx + dir], arr[idx]];
-      d.startY = e.clientY;
-      setDragOffset(0);
-      return { ...t, days: { ...t.days, [d.dayIdx]: { ...day, spots: arr } } };
-    });
   };
 
   const onDragEnd = () => {
     clearTimeout(pressTimer.current);
+    detachDrag();
     dragRef.current = null;
     setDragId(null);
     setDragOffset(0);
@@ -866,15 +891,30 @@ export default function TabiShiori() {
         .shiori button.pill:active {
           box-shadow: inset 2px 2px 6px rgba(99,110,160,0.2), inset -2px -2px 6px rgba(255,255,255,0.9);
         }
-        .shiori .handle { touch-action: none; cursor: grab; }
+        .shiori .handle {
+          touch-action: none;
+          cursor: grab;
+          -webkit-touch-callout: none;
+          -webkit-user-select: none;
+          user-select: none;
+        }
         .shiori .handle:active { cursor: grabbing; }
+        /* ドラッグ中はページ全体の選択・スクロールを止める(iOSの誤爆防止) */
+        .shiori.dragging-active, .shiori.dragging-active * {
+          -webkit-user-select: none;
+          user-select: none;
+        }
         @media (prefers-reduced-motion: no-preference) {
           .shiori .row { transition: transform .12s ease; }
           .shiori .row.dragging { transition: none; }
         }
       `}</style>
 
-      <div className="shiori relative max-w-md mx-auto px-5 pt-7 pb-20">
+      <div
+        className={`shiori relative max-w-md mx-auto px-5 pt-7 pb-20 ${
+          dragId ? "dragging-active" : ""
+        }`}
+      >
         {/* ════════ ホーム: 旅程一覧 ════════ */}
         {!trip && (
           <>
@@ -1479,10 +1519,10 @@ export default function TabiShiori() {
                                         )}
                                       </div>
                                       <div
-                                        className="handle flex items-center px-2.5 select-none shrink-0"
-                                        style={{ color: "#B9C2D8" }}
+                                        className="handle flex items-center px-3 py-1 select-none shrink-0"
+                                        style={{ color: "#B9C2D8", touchAction: "none" }}
                                         onPointerDown={(e) => onDragStart(e, dayIdx, s.id)}
-                                        onPointerMove={onDragMove}
+                                        onPointerMove={onHandleMove}
                                         onPointerUp={onDragEnd}
                                         onPointerCancel={onDragEnd}
                                         aria-label="ドラッグして並び替え"
@@ -1702,11 +1742,12 @@ export default function TabiShiori() {
                           </div>
                         )}
 
-                      {/* 追加行(編集モードのみ): 点線ピル → タップで入力欄 */}
+                      {/* 追加行(編集モードのみ): 点線ピル → タップで入力欄。
+                          左インデントをスポットカードに揃える(pl-8) */}
                       {mode === "edit" && (
-                        <div className="pt-1 pb-1">
+                        <div className="pt-1 pb-1 pl-8">
                           {addingDay === dayIdx ? (
-                            <div className="flex gap-2 pl-8">
+                            <div className="flex gap-2">
                               <input
                                 autoFocus
                                 value={drafts[dayIdx] || ""}
