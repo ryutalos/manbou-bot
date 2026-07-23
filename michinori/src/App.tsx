@@ -53,11 +53,24 @@ const newSpot = (name) => ({
   id: uid(),
   name,
   stay: 60,
+  cost: 0,
   memo: "",
   photos: [],
   fixedArrival: null,
   travel: { mode: "transit", minutes: 20 },
 });
+
+const yen = (n) => "¥" + (Number(n) || 0).toLocaleString("ja-JP");
+
+// 1日の費用合計 / 旅程全体の費用合計
+function dayCostOf(day) {
+  return (day?.spots || []).reduce((sum, s) => sum + (Number(s.cost) || 0), 0);
+}
+function tripCostOf(trip, nDays) {
+  let sum = 0;
+  for (let i = 0; i < nDays; i++) sum += dayCostOf(trip.days[i]);
+  return sum;
+}
 
 const newDay = () => ({ startTime: "09:00", spots: [] });
 
@@ -207,6 +220,7 @@ const IC = {
   x: "M6.5 6.5l11 11 M17.5 6.5l-11 11",
   plus: "M12 5.5v13 M5.5 12h13",
   arrow: "M7.5 16.5 16.5 7.5 M9 7.5h7.5V15",
+  chevron: "M9 6l6 6-6 6",
   clock: "M12 3.8a8.2 8.2 0 1 0 0 16.4 8.2 8.2 0 0 0 0-16.4Z M12 7.6V12l3 2.2",
 };
 
@@ -380,6 +394,19 @@ export default function TabiShiori() {
   const pressTimer = useRef(null); // 長押し判定タイマー
   const rowRefs = useRef({});
   const fileRefs = useRef({});
+
+  const [collapsedDays, setCollapsedDays] = useState({}); // {dayIdx:true}=折りたたみ
+  const dayRefs = useRef({}); // タブから画面内ジャンプするための各日への参照
+
+  const toggleDayCollapse = (i) =>
+    setCollapsedDays((c) => ({ ...c, [i]: !c[i] }));
+  const jumpToDay = (i) => {
+    setCollapsedDays((c) => ({ ...c, [i]: false }));
+    setOpenId(null);
+    requestAnimationFrame(() =>
+      dayRefs.current[i]?.scrollIntoView({ behavior: "smooth", block: "start" })
+    );
+  };
 
   // ── 初期ロード(旧単一旅程データからの移行含む) ──
   useEffect(() => {
@@ -828,10 +855,11 @@ export default function TabiShiori() {
       lines.push("", `── Day ${i + 1} ${dateLabel(trip, i)} ──`);
       day.spots.forEach((s, j) => {
         const t = times[j];
+        const costTag = Number(s.cost) > 0 ? `　💰${yen(s.cost)}` : "";
         lines.push(
           (Number(s.stay) || 0) > 0
-            ? `${t.arrive.nextDay ? "翌" : ""}${t.arrive.text}〜${t.depart.nextDay ? "翌" : ""}${t.depart.text}　${s.name}`
-            : `${t.arrive.nextDay ? "翌" : ""}${t.arrive.text}　${s.name}（経由）`
+            ? `${t.arrive.nextDay ? "翌" : ""}${t.arrive.text}〜${t.depart.nextDay ? "翌" : ""}${t.depart.text}　${s.name}${costTag}`
+            : `${t.arrive.nextDay ? "翌" : ""}${t.arrive.text}　${s.name}（経由）${costTag}`
         );
         if (s.memo) lines.push(`　✎ ${s.memo}`);
         if (j < day.spots.length - 1) {
@@ -840,7 +868,11 @@ export default function TabiShiori() {
         }
       });
       if (day.spots.length === 0) lines.push("（予定なし）");
+      const dc = dayCostOf(day);
+      if (dc > 0) lines.push(`　小計 ${yen(dc)}`);
     }
+    const total = tripCostOf(trip, nDays);
+    if (total > 0) lines.push("", `合計 ${yen(total)}`);
     navigator.clipboard?.writeText(lines.join("\n")).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 1800);
@@ -899,6 +931,10 @@ export default function TabiShiori() {
           user-select: none;
         }
         .shiori .handle:active { cursor: grabbing; }
+        .shiori .no-scrollbar::-webkit-scrollbar { display: none; }
+        .shiori .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .shiori .chev { transition: transform .18s ease; }
+        .shiori .chev.open { transform: rotate(90deg); }
         /* ドラッグ中はページ全体の選択・スクロールを止める(iOSの誤爆防止) */
         .shiori.dragging-active, .shiori.dragging-active * {
           -webkit-user-select: none;
@@ -1201,6 +1237,41 @@ export default function TabiShiori() {
               <Notice>保存に失敗しました（容量オーバーの可能性）。写真を減らしてみてください。</Notice>
             )}
 
+            {/* 日タブ: タップで該当日へジャンプ(複数日のときだけ) */}
+            {nDays > 1 && (
+              <div
+                className="sticky top-0 z-20 -mx-5 px-5 py-2.5 mb-1"
+                style={{
+                  background: "rgba(243,245,252,0.75)",
+                  backdropFilter: "blur(10px)",
+                  WebkitBackdropFilter: "blur(10px)",
+                }}
+              >
+                <div className="flex gap-2 overflow-x-auto no-scrollbar">
+                  {Array.from({ length: nDays }).map((_, i) => {
+                    const dayToday = isoOfDay(trip, i) === todayIso();
+                    return (
+                      <button
+                        key={i}
+                        onClick={() => jumpToDay(i)}
+                        className="pill px-3 py-1.5 rounded-full text-sm font-bold whitespace-nowrap shrink-0"
+                        style={
+                          dayToday && mode === "day"
+                            ? { background: C.key, color: "#fff", boxShadow: "0 4px 12px rgba(32,0,255,0.3)" }
+                            : { color: C.ink }
+                        }
+                      >
+                        Day {i + 1}
+                        <span className="ml-1.5 font-normal" style={{ opacity: 0.6 }}>
+                          {dateLabel(trip, i)}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             {/* 編集モードは大きなパネルにまとめ、当日モードは背景に直接置く */}
             <div style={mode === "edit" ? { ...PANEL, padding: "0 16px 24px" } : undefined}>
               {Array.from({ length: nDays }).map((_, dayIdx) => {
@@ -1222,48 +1293,77 @@ export default function TabiShiori() {
                   }
                 }
 
+                const collapsed = !!collapsedDays[dayIdx];
+                const dCost = dayCostOf(day);
+
                 return (
-                  <section key={dayIdx}>
-                    {/* 日区切り */}
+                  <section
+                    key={dayIdx}
+                    ref={(el) => (dayRefs.current[dayIdx] = el)}
+                    style={{ scrollMarginTop: nDays > 1 ? 60 : 0 }}
+                  >
+                    {/* 日区切り(タップで開閉) */}
                     <div className="flex items-center gap-x-2.5 gap-y-2 pt-7 pb-4 flex-wrap">
-                      <span
-                        className={`font-bold text-white whitespace-nowrap shrink-0 ${
-                          mode === "day" ? "text-base px-3.5 py-1 rounded-xl" : "text-sm px-3 py-0.5 rounded-lg"
-                        }`}
-                        style={{
-                          background: isToday && mode === "day" ? C.key : C.ink,
-                          boxShadow:
-                            isToday && mode === "day"
-                              ? "0 6px 14px rgba(32,0,255,0.3)"
-                              : "none",
-                        }}
+                      <button
+                        onClick={() => toggleDayCollapse(dayIdx)}
+                        className="flex items-center gap-2.5 min-w-0"
+                        aria-label={collapsed ? "この日を開く" : "この日を閉じる"}
                       >
-                        Day {dayIdx + 1}
-                      </span>
-                      <span
-                        className={`whitespace-nowrap ${
-                          mode === "day" ? "text-2xl font-bold" : "text-base font-bold"
-                        }`}
-                      >
-                        {dateLabel(trip, dayIdx)}
-                      </span>
-                      {mode === "edit" && (
                         <span
-                          className="ml-auto flex items-center gap-2 text-xs whitespace-nowrap"
+                          className="chev shrink-0 inline-flex"
+                          style={{ color: C.sub, transform: collapsed ? "none" : "rotate(90deg)" }}
+                        >
+                          <Ic d={IC.chevron} size={16} sw={2.4} />
+                        </span>
+                        <span
+                          className={`font-bold text-white whitespace-nowrap shrink-0 ${
+                            mode === "day" ? "text-base px-3.5 py-1 rounded-xl" : "text-sm px-3 py-0.5 rounded-lg"
+                          }`}
+                          style={{
+                            background: isToday && mode === "day" ? C.key : C.ink,
+                            boxShadow:
+                              isToday && mode === "day" ? "0 6px 14px rgba(32,0,255,0.3)" : "none",
+                          }}
+                        >
+                          Day {dayIdx + 1}
+                        </span>
+                        <span
+                          className={`whitespace-nowrap ${
+                            mode === "day" ? "text-2xl font-bold" : "text-base font-bold"
+                          }`}
+                        >
+                          {dateLabel(trip, dayIdx)}
+                        </span>
+                      </button>
+
+                      {collapsed ? (
+                        <span
+                          className="ml-auto flex items-center gap-2 text-sm whitespace-nowrap"
                           style={{ color: C.sub }}
                         >
-                          この日の出発
-                          <PickerField
-                            type="time"
-                            icon={<Ic d={IC.clock} size={15} />}
-                            placeholder="--:--"
-                            value={day.startTime}
-                            onChange={(e) => setDay(dayIdx, { startTime: e.target.value })}
-                          />
+                          <span>{day.spots.length}件</span>
+                          {dCost > 0 && <span className="font-bold" style={{ color: C.ink }}>{yen(dCost)}</span>}
                         </span>
+                      ) : (
+                        mode === "edit" && (
+                          <span
+                            className="ml-auto flex items-center gap-2 text-xs whitespace-nowrap"
+                            style={{ color: C.sub }}
+                          >
+                            この日の出発
+                            <PickerField
+                              type="time"
+                              icon={<Ic d={IC.clock} size={15} />}
+                              placeholder="--:--"
+                              value={day.startTime}
+                              onChange={(e) => setDay(dayIdx, { startTime: e.target.value })}
+                            />
+                          </span>
+                        )
                       )}
                     </div>
 
+                    {!collapsed && (
                     <div className="relative">
                       {/* 編集モード: 通しの細いタイムライン */}
                       {mode === "edit" && day.spots.length > 0 && (
@@ -1571,6 +1671,39 @@ export default function TabiShiori() {
                                           />
                                         </div>
 
+                                        <div className="flex items-center justify-between mt-3.5">
+                                          <span className="text-sm" style={{ color: C.sub }}>費用</span>
+                                          <span
+                                            className="inline-flex items-center rounded-full px-3 py-1.5"
+                                            style={{
+                                              border: `1px solid ${C.border}`,
+                                              background: "rgba(255,255,255,0.7)",
+                                            }}
+                                          >
+                                            <span className="text-sm font-bold" style={{ color: C.sub }}>¥</span>
+                                            <input
+                                              type="text"
+                                              inputMode="numeric"
+                                              value={s.cost ? String(s.cost) : ""}
+                                              onChange={(e) =>
+                                                setSpot(dayIdx, s.id, {
+                                                  cost: Math.max(
+                                                    0,
+                                                    parseInt(
+                                                      e.target.value.replace(/[^0-9]/g, "").slice(0, 9) || "0",
+                                                      10
+                                                    )
+                                                  ),
+                                                })
+                                              }
+                                              placeholder="0"
+                                              className="w-24 text-right tabular-nums bg-transparent font-bold ml-1"
+                                              style={{ color: C.ink }}
+                                              aria-label="費用を入力"
+                                            />
+                                          </span>
+                                        </div>
+
                                         <textarea
                                           value={s.memo}
                                           onChange={(e) => setSpot(dayIdx, s.id, { memo: e.target.value })}
@@ -1806,10 +1939,39 @@ export default function TabiShiori() {
                           この日の予定はまだありません
                         </p>
                       )}
+
+                      {/* この日の費用合計 */}
+                      {dCost > 0 && (
+                        <div
+                          className={`flex items-center justify-end gap-2 text-sm pt-1 ${
+                            mode === "edit" ? "pr-1" : ""
+                          }`}
+                          style={{ color: C.sub }}
+                        >
+                          この日の合計
+                          <span className="text-base font-bold" style={{ color: C.ink }}>
+                            {yen(dCost)}
+                          </span>
+                        </div>
+                      )}
                     </div>
+                    )}
                   </section>
                 );
               })}
+
+              {/* 旅全体の費用合計 */}
+              {tripCostOf(trip, nDays) > 0 && (
+                <div
+                  className="flex items-center justify-between mt-6 px-5 py-4"
+                  style={{ ...CARD, borderRadius: 22 }}
+                >
+                  <span className="text-base font-bold">旅の合計</span>
+                  <span className="text-2xl font-bold" style={{ color: C.key }}>
+                    {yen(tripCostOf(trip, nDays))}
+                  </span>
+                </div>
+              )}
             </div>
           </>
         )}
