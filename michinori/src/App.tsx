@@ -887,10 +887,13 @@ export default function TabiShiori() {
 
   return (
     <div
-      className="min-h-screen relative overflow-hidden"
+      className="min-h-screen relative"
       style={{
         color: C.ink,
         background: `linear-gradient(165deg, #F3F5FC 0%, #EAEDF8 45%, #F1EBF7 100%)`,
+        // overflow-hidden だと sticky のスクロール基準を奪いタブが固定されないため、
+        // 固定を壊さず横はみ出しだけ抑える overflow-x: clip を使う
+        overflowX: "clip",
       }}
     >
       <div
