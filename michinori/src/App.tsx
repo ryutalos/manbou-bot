@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { compressToEncodedURIComponent, decompressFromEncodedURIComponent } from "lz-string";
 import { LogoMark, TYPE_SRC } from "./assets/logos";
 
 // ── ミチノリ v9 ──
@@ -70,6 +71,59 @@ function tripCostOf(trip, nDays) {
   let sum = 0;
   for (let i = 0; i < nDays; i++) sum += dayCostOf(trip.days[i]);
   return sum;
+}
+
+// ── 閲覧専用の共有リンク ──
+// 旅程を(写真を除いて)圧縮しURLハッシュに載せる。サーバー不要。
+// 写真はサイズが大きくURLに載らないため共有では省く。
+function stripPhotos(trip) {
+  const days = {};
+  for (const k of Object.keys(trip.days || {})) {
+    const d = trip.days[k];
+    days[k] = { ...d, spots: (d.spots || []).map((s) => ({ ...s, photos: [] })) };
+  }
+  return { title: trip.title, startDate: trip.startDate, endDate: trip.endDate, days };
+}
+
+function buildShareUrl(trip) {
+  const payload = compressToEncodedURIComponent(JSON.stringify(stripPhotos(trip)));
+  const base = `${window.location.origin}${window.location.pathname}`;
+  return `${base}#v=${payload}`;
+}
+
+function parseSharedTrip() {
+  if (typeof window === "undefined") return null;
+  const h = window.location.hash || "";
+  if (!h.startsWith("#v=")) return null;
+  try {
+    const json = decompressFromEncodedURIComponent(h.slice(3));
+    if (!json) return null;
+    const t = JSON.parse(json);
+    if (!t || !t.days) return null;
+    return t;
+  } catch (_) {
+    return null;
+  }
+}
+
+// 出発時刻＋滞在＋移動から各スポットの到着/出発時刻を積み上げる
+function computeDayTimes(day) {
+  const times = [];
+  let cursor = day.startTime || "09:00";
+  let carry = false;
+  (day.spots || []).forEach((s) => {
+    if (s.fixedArrival) {
+      cursor = s.fixedArrival;
+      carry = false;
+    }
+    const arr = { text: cursor, nextDay: carry };
+    const dep = addMin(cursor, Number(s.stay) || 0);
+    times.push({ arrive: arr, depart: { text: dep.text, nextDay: carry || dep.nextDay } });
+    const next = addMin(dep.text, Number(s.travel.minutes) || 0);
+    carry = carry || dep.nextDay || next.nextDay;
+    cursor = next.text;
+  });
+  return times;
 }
 
 const newDay = () => ({ startTime: "09:00", spots: [] });
@@ -221,6 +275,7 @@ const IC = {
   plus: "M12 5.5v13 M5.5 12h13",
   arrow: "M7.5 16.5 16.5 7.5 M9 7.5h7.5V15",
   chevron: "M9 6l6 6-6 6",
+  link: "M9.5 14.5l5-5 M8 11l-2 2a3 3 0 0 0 4.2 4.2l2-2 M16 13l2-2a3 3 0 0 0-4.2-4.2l-2 2",
   clock: "M12 3.8a8.2 8.2 0 1 0 0 16.4 8.2 8.2 0 0 0 0-16.4Z M12 7.6V12l3 2.2",
 };
 
@@ -366,6 +421,216 @@ function Notice({ children }) {
   );
 }
 
+// ── 閲覧専用ビュー(共有リンクを開いた人が見る画面) ──
+function ReadOnlyView({ trip, onDuplicate, onOpenApp }) {
+  const nDays = dayCount(trip);
+  const total = tripCostOf(trip, nDays);
+  return (
+    <div
+      className="min-h-screen relative"
+      style={{
+        color: C.ink,
+        background: "linear-gradient(165deg, #F3F5FC 0%, #EAEDF8 45%, #F1EBF7 100%)",
+        overflowX: "clip",
+      }}
+    >
+      <style>{`
+        .roview, .roview * {
+          font-family: "Yu Gothic","YuGothic","游ゴシック","Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;
+        }
+      `}</style>
+      <div className="roview relative max-w-md mx-auto px-5 pt-7 pb-24">
+        <div className="flex items-center justify-between mb-5">
+          <div className="flex items-center gap-1.5">
+            <Logo size={24} />
+            <LogoType height={18} />
+          </div>
+          <span
+            className="text-xs font-bold px-3 py-1.5 rounded-full"
+            style={{ background: "rgba(255,255,255,0.8)", color: C.sub, border: `1px solid ${C.border}` }}
+          >
+            閲覧専用
+          </span>
+        </div>
+
+        <header className="p-5 mb-5" style={PANEL}>
+          <div className="text-2xl font-bold leading-snug break-words">{trip.title || "無題の旅"}</div>
+          <div className="flex items-center justify-between gap-3 mt-3 flex-wrap">
+            <span className="text-base font-medium" style={{ color: C.sub }}>
+              {rangeLabel(trip)}
+              {trip.startDate &&
+                trip.endDate &&
+                trip.endDate !== trip.startDate &&
+                ` ・ ${nDays - 1}泊${nDays}日`}
+            </span>
+            {total > 0 && (
+              <span className="text-base font-bold" style={{ color: C.key }}>
+                {yen(total)}
+              </span>
+            )}
+          </div>
+        </header>
+
+        {Array.from({ length: nDays }).map((_, dayIdx) => {
+          const day = trip.days[dayIdx] || { startTime: "09:00", spots: [] };
+          const times = computeDayTimes(day);
+          const dCost = dayCostOf(day);
+          return (
+            <section key={dayIdx}>
+              <div className="flex items-center gap-2.5 pt-6 pb-4">
+                <span
+                  className="font-bold text-white text-sm px-3 py-0.5 rounded-lg"
+                  style={{ background: C.ink }}
+                >
+                  Day {dayIdx + 1}
+                </span>
+                <span className="text-base font-bold">{dateLabel(trip, dayIdx)}</span>
+              </div>
+
+              <div className="relative">
+                {day.spots.length > 0 && (
+                  <div
+                    className="absolute left-[8px] top-4 bottom-4 w-[2px] rounded-full"
+                    style={{ background: "rgba(32,0,255,0.22)" }}
+                  />
+                )}
+                {day.spots.map((s, i) => {
+                  const t = times[i];
+                  const isLast = i === day.spots.length - 1;
+                  const isVia = (Number(s.stay) || 0) === 0;
+                  const travelMode = MODES.find((m) => m.id === s.travel.mode);
+                  const nextName = !isLast ? day.spots[i + 1].name : null;
+                  const hasMove = (Number(s.travel.minutes) || 0) > 0;
+                  return (
+                    <div key={s.id || i} className="relative pl-9">
+                      <div
+                        className="absolute left-0 top-4 w-[18px] h-[18px] rounded-full"
+                        style={{ background: "#fff", border: `3px solid ${C.key}` }}
+                      />
+                      <div className="mb-3 p-5" style={CARD}>
+                        <div className="flex items-baseline gap-3">
+                          <span className="text-2xl font-bold tabular-nums shrink-0">
+                            {t.arrive.nextDay ? "翌" : ""}
+                            {t.arrive.text}
+                          </span>
+                          <span className="text-lg font-medium min-w-0">{s.name}</span>
+                        </div>
+                        <div className="text-sm mt-1.5 flex items-center gap-2 flex-wrap" style={{ color: C.sub }}>
+                          <span>
+                            {isVia
+                              ? "経由"
+                              : `滞在 ${s.stay}分（〜${t.depart.nextDay ? "翌" : ""}${t.depart.text}）`}
+                          </span>
+                          {Number(s.cost) > 0 && (
+                            <span className="font-bold" style={{ color: C.ink }}>
+                              {yen(s.cost)}
+                            </span>
+                          )}
+                        </div>
+                        {s.memo && <p className="text-base mt-2 whitespace-pre-wrap">{s.memo}</p>}
+                      </div>
+                      {!isLast && (
+                        <div className="relative mb-3">
+                          <div
+                            className="absolute top-0 bottom-0"
+                            style={{ left: -28, borderLeft: "2px dashed rgba(32,0,255,0.3)" }}
+                          />
+                          <div className="flex items-center gap-2.5 py-2 pl-1 pr-1 text-base" style={{ color: C.ink }}>
+                            {hasMove ? (
+                              <>
+                                <span className="text-xl">{travelMode.icon}</span>
+                                <span className="font-medium">
+                                  {travelMode.label} {s.travel.minutes}分
+                                </span>
+                                <a
+                                  href={mapsUrl(s.name, nextName, s.travel.mode)}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="ml-auto underline font-bold py-2 pl-4 inline-flex items-center gap-0.5 whitespace-nowrap shrink-0"
+                                  style={{ color: C.key }}
+                                >
+                                  経路
+                                  <Ic d={IC.arrow} size={15} sw={2.2} />
+                                </a>
+                              </>
+                            ) : (
+                              <span className="text-sm font-medium" style={{ color: C.sub }}>
+                                移動なし
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                {day.spots.length === 0 && (
+                  <p className="text-sm py-3" style={{ color: C.sub }}>
+                    この日の予定はありません
+                  </p>
+                )}
+                {dCost > 0 && (
+                  <div className="flex items-center justify-end gap-2 text-sm pt-1" style={{ color: C.sub }}>
+                    この日の合計
+                    <span className="text-base font-bold" style={{ color: C.ink }}>
+                      {yen(dCost)}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </section>
+          );
+        })}
+
+        {total > 0 && (
+          <div
+            className="flex items-center justify-between mt-6 px-5 py-4"
+            style={{ ...CARD, borderRadius: 22 }}
+          >
+            <span className="text-base font-bold">旅の合計</span>
+            <span className="text-2xl font-bold" style={{ color: C.key }}>
+              {yen(total)}
+            </span>
+          </div>
+        )}
+
+        {/* 閲覧者向けアクション */}
+        <div className="flex flex-col gap-3 mt-8">
+          <button
+            onClick={onDuplicate}
+            className="w-full py-4 rounded-full text-base font-bold"
+            style={{
+              background: C.key,
+              color: "#fff",
+              boxShadow: "0 12px 28px rgba(32,0,255,0.3), inset 0 1.5px 1px rgba(255,255,255,0.4)",
+            }}
+          >
+            自分のミチノリに複製して編集
+          </button>
+          <button
+            onClick={onOpenApp}
+            className="pill w-full py-3.5 rounded-full text-sm font-medium"
+            style={{ color: C.ink }}
+          >
+            ミチノリを開く
+          </button>
+        </div>
+        <p className="text-xs text-center mt-5" style={{ color: C.sub }}>
+          このリンクは閲覧専用です。写真は共有されません。
+        </p>
+      </div>
+
+      <style>{`
+        .roview .pill {
+          background: rgba(255,255,255,0.82);
+          border: 1px solid rgba(255,255,255,0.95);
+          box-shadow: 0 6px 16px rgba(99,110,160,0.13), inset 0 1px 1px #fff;
+        }
+      `}</style>
+    </div>
+  );
+}
+
 export default function TabiShiori() {
   const [index, setIndex] = useState([]); // 旅程一覧メタ
   const [currentId, setCurrentId] = useState(null);
@@ -379,6 +644,9 @@ export default function TabiShiori() {
   const [saveErr, setSaveErr] = useState(false);
   const [now, setNow] = useState(Date.now());
   const [viewerSrc, setViewerSrc] = useState(null); // 写真の拡大表示
+  const [sharedView, setSharedView] = useState(() => parseSharedTrip()); // 共有リンクで開いた旅程
+  const [shareOpen, setShareOpen] = useState(false); // 共有メニュー
+  const [linkCopied, setLinkCopied] = useState(false);
 
   const [storageOk, setStorageOk] = useState(true);
   const [bkCopied, setBkCopied] = useState(false);
@@ -652,6 +920,47 @@ export default function TabiShiori() {
     setNow(Date.now());
   };
 
+  // ── 共有(閲覧専用リンク) ──
+  const copyShareLink = () => {
+    if (!trip) return;
+    const url = buildShareUrl(trip);
+    navigator.clipboard?.writeText(url).then(() => {
+      setLinkCopied(true);
+      setShareOpen(false);
+      setTimeout(() => setLinkCopied(false), 2000);
+    });
+  };
+
+  const openAppFromShare = () => {
+    history.replaceState(null, "", window.location.pathname + window.location.search);
+    setSharedView(null);
+  };
+
+  const duplicateFromShare = async () => {
+    const t = sharedView;
+    if (!t) return;
+    const id = uid();
+    const copy = {
+      title: (t.title || "無題の旅") + " のコピー",
+      startDate: t.startDate || "",
+      endDate: t.endDate || "",
+      days: t.days,
+    };
+    tripsCache.current[id] = copy;
+    try {
+      if (window.storage) await window.storage.set(`trip:${id}`, JSON.stringify(copy));
+    } catch (_) {}
+    setIndex((idx) => [
+      { id, title: copy.title, startDate: copy.startDate, endDate: copy.endDate, thumb: null, updatedAt: Date.now() },
+      ...idx,
+    ]);
+    history.replaceState(null, "", window.location.pathname + window.location.search);
+    setSharedView(null);
+    setTrip(copy);
+    setCurrentId(id);
+    setMode("edit");
+  };
+
   // ── 旅程内の操作 ──
   const nDays = trip ? dayCount(trip) : 1;
   const getDay = (t, i) => t.days[i] || newDay();
@@ -819,25 +1128,8 @@ export default function TabiShiori() {
     setDragOffset(0);
   };
 
-  // ── 時刻カスケード ──
-  const dayTimes = (day) => {
-    const times = [];
-    let cursor = day.startTime || "09:00";
-    let carry = false;
-    day.spots.forEach((s) => {
-      if (s.fixedArrival) {
-        cursor = s.fixedArrival;
-        carry = false;
-      }
-      const arr = { text: cursor, nextDay: carry };
-      const dep = addMin(cursor, Number(s.stay) || 0);
-      times.push({ arrive: arr, depart: { text: dep.text, nextDay: carry || dep.nextDay } });
-      const next = addMin(dep.text, Number(s.travel.minutes) || 0);
-      carry = carry || dep.nextDay || next.nextDay;
-      cursor = next.text;
-    });
-    return times;
-  };
+  // ── 時刻カスケード(モジュール関数を利用) ──
+  const dayTimes = (day) => computeDayTimes(day);
 
   // ── テキスト共有 ──
   const shareText = () => {
@@ -884,6 +1176,17 @@ export default function TabiShiori() {
   const nowText = `${String(nowDate.getHours()).padStart(2, "0")}:${String(
     nowDate.getMinutes()
   ).padStart(2, "0")}`;
+
+  // 共有リンクで開かれた場合は閲覧専用ビューを表示
+  if (sharedView) {
+    return (
+      <ReadOnlyView
+        trip={sharedView}
+        onDuplicate={duplicateFromShare}
+        onOpenApp={openAppFromShare}
+      />
+    );
+  }
 
   return (
     <div
@@ -1162,24 +1465,64 @@ export default function TabiShiori() {
                   <LogoType height={20} />
                 </div>
               </div>
-              <button
-                onClick={shareText}
-                className="pill h-11 px-4 rounded-full flex items-center gap-1.5 shrink-0 text-sm font-medium whitespace-nowrap"
-                style={{ color: copied ? C.key : C.ink }}
-                aria-label="テキストで共有"
-              >
-                {copied ? (
+              <div className="relative shrink-0">
+                <button
+                  onClick={() => setShareOpen((v) => !v)}
+                  className="pill h-11 px-4 rounded-full flex items-center gap-1.5 text-sm font-medium whitespace-nowrap"
+                  style={{ color: copied || linkCopied ? C.key : C.ink }}
+                  aria-label="共有"
+                >
+                  {copied || linkCopied ? (
+                    <>
+                      <span className="text-base font-bold leading-none">✓</span>
+                      コピーした
+                    </>
+                  ) : (
+                    <>
+                      <Ic d={IC.upload} size={16} />
+                      共有
+                    </>
+                  )}
+                </button>
+                {shareOpen && (
                   <>
-                    <span className="text-base font-bold leading-none">✓</span>
-                    コピーした
-                  </>
-                ) : (
-                  <>
-                    <Ic d={IC.upload} size={16} />
-                    テキストで共有
+                    <div className="fixed inset-0 z-30" onClick={() => setShareOpen(false)} />
+                    <div
+                      className="absolute right-0 top-12 z-40 py-1.5 w-56"
+                      style={{ ...CARD, borderRadius: 18 }}
+                    >
+                      <button
+                        onClick={() => {
+                          shareText();
+                          setShareOpen(false);
+                        }}
+                        className="w-full text-left px-4 py-3 text-sm font-medium inline-flex items-center gap-2.5"
+                        style={{ color: C.ink }}
+                      >
+                        <Ic d={IC.upload} size={16} />
+                        テキストで共有
+                        <span className="ml-auto text-xs" style={{ color: C.sub }}>
+                          コピー
+                        </span>
+                      </button>
+                      <div className="border-t mx-3" style={{ borderColor: "#EAEDF5" }} />
+                      <button
+                        onClick={copyShareLink}
+                        className="w-full text-left px-4 py-3 text-sm font-medium inline-flex items-center gap-2.5"
+                        style={{ color: C.ink }}
+                      >
+                        <Ic d={IC.link} size={16} />
+                        <span className="min-w-0">
+                          閲覧リンクをコピー
+                          <span className="block text-xs font-normal" style={{ color: C.sub }}>
+                            相手は見るだけ・写真は含まれません
+                          </span>
+                        </span>
+                      </button>
+                    </div>
                   </>
                 )}
-              </button>
+              </div>
             </div>
 
             {/* ヘッダー: 編集=素のまま / 当日=カードにまとめる */}
